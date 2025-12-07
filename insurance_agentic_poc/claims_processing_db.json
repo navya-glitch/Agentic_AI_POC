@@ -1,0 +1,73 @@
+{
+  "claims": [
+    {
+      "claim_id": "CLM-1000",
+      "user_email": "",
+      "user_name": "Guest User",
+      "claim_type": "Auto",
+      "incident_description": "The incident happened on Wednesday around 3 PM in the afternoon.  \nMy car received multiple dents at the incident location: Texas 36th Ave N.  \nEstimated repair cost: $50.\n\nOther party involved:  \nA young individual (approx. age 18) residing in the area near 2nd Ave N, Texas.  \nThey were present at the scene and were involved in the incident.  \nNo further contact details were available at the time.\n\n",
+      "status": "Initiated",
+      "created_date": "2025-12-07 15:22:59",
+      "estimated_settlement_date": "2025-12-14",
+      "documents_required": [
+        "Driver's License",
+        "Vehicle Registration",
+        "Police Report (if applicable)",
+        "Photos of Damage",
+        "Witness Statements (if any)",
+        "Repair Estimates"
+      ],
+      "documents_uploaded": [],
+      "photos_required": true,
+      "photos_uploaded": [],
+      "missing_information": [],
+      "ai_damage_assessment": null,
+      "estimated_claim_amount": 0,
+      "approved_amount": 0,
+      "notifications": [],
+      "timeline": [
+        {
+          "status": "Initiated",
+          "timestamp": "2025-12-07 15:22:59",
+          "message": "Claim initiated successfully"
+        }
+      ],
+      "ai_guidance": "\ud83d\udccb For Auto claims: Get police report if accident involved other parties, take photos from all angles, collect witness information, get repair estimates from certified mechanics."
+    },
+    {
+      "claim_id": "CLM-1001",
+      "user_email": "",
+      "user_name": "Guest User",
+      "claim_type": "Auto",
+      "incident_description": "The incident happened on Wednesday around 3 PM in the afternoon.  \nMy car received multiple dents at the incident location: Texas 36th Ave N.  \nEstimated repair cost: $50.\n\nOther party involved:  \nA young individual (approx. age 18) residing in the area near 2nd Ave N, Texas.  \nThey were present at the scene and were involved in the incident.  \nNo further contact details were available at the time.\n",
+      "status": "Initiated",
+      "created_date": "2025-12-07 19:16:22",
+      "estimated_settlement_date": "2025-12-14",
+      "documents_required": [
+        "Driver's License",
+        "Vehicle Registration",
+        "Police Report (if applicable)",
+        "Photos of Damage",
+        "Witness Statements (if any)",
+        "Repair Estimates"
+      ],
+      "documents_uploaded": [],
+      "photos_required": true,
+      "photos_uploaded": [],
+      "missing_information": [],
+      "ai_damage_assessment": null,
+      "estimated_claim_amount": 0,
+      "approved_amount": 0,
+      "notifications": [],
+      "timeline": [
+        {
+          "status": "Initiated",
+          "timestamp": "2025-12-07 19:16:22",
+          "message": "Claim initiated successfully"
+        }
+      ],
+      "ai_guidance": "\ud83d\udccb For Auto claims: Get police report if accident involved other parties, take photos from all angles, collect witness information, get repair estimates from certified mechanics."
+    }
+  ],
+  "claim_counter": 1002
+}

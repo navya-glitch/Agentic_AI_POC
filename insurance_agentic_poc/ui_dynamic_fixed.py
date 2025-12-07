@@ -294,158 +294,13 @@ if "selected_plans" not in st.session_state:
 if "cache_stats" not in st.session_state:
     st.session_state.cache_stats = {"hits": 0, "misses": 0}
 
-# ====== USER PROFILE SESSION STATE ======
-if "user_profile" not in st.session_state:
-    st.session_state.user_profile = {
-        "name": "Guest User",
-        "email": "",
-        "budget_preference": "Balanced",
-        "coverage_preference": "Standard",
-        "risk_tolerance": "Moderate",
-        "insurance_types": ["Home"],
-        "preferred_locations": ["California"],
-        "savings_profile": False,
-        "contact_method": "Email"
-    }
-
 # ====== HEADER ======
 col1, col2, col3 = st.columns([1, 2, 1])
-with col1:
-    with st.popover("👤 Profile", use_container_width=True):
-        st.subheader("👤 User Profile")
-        st.write(f"**Name:** {st.session_state.user_profile['name']}")
-        st.write(f"**Budget Preference:** {st.session_state.user_profile['budget_preference']}")
-        st.write(f"**Coverage Level:** {st.session_state.user_profile['coverage_preference']}")
-        st.markdown("---")
-        if st.button("✏️ Edit Profile", use_container_width=True):
-            st.session_state.show_profile_editor = True
-
 with col2:
     st.markdown("<div class='main-title'>🏆 InsureAI Pro</div>", unsafe_allow_html=True)
     st.markdown("<div class='subtitle'>Smart Insurance Solutions Powered by AI</div>", unsafe_allow_html=True)
 
-with col3:
-    if st.button("⚙️ Settings", use_container_width=True):
-        st.session_state.show_settings = True
-
-# ====== USER PROFILE EDITOR MODAL ======
-if st.session_state.get("show_profile_editor"):
-    st.markdown("---")
-    st.subheader("✏️ Edit Your Profile")
-    
-    profile_col1, profile_col2 = st.columns(2)
-    
-    with profile_col1:
-        st.session_state.user_profile["name"] = st.text_input(
-            "Full Name",
-            value=st.session_state.user_profile.get("name", "Guest User")
-        )
-        
-        st.session_state.user_profile["email"] = st.text_input(
-            "Email Address",
-            value=st.session_state.user_profile.get("email", ""),
-            placeholder="your@email.com"
-        )
-        
-        st.session_state.user_profile["contact_method"] = st.selectbox(
-            "Preferred Contact Method",
-            ["Email", "Phone", "SMS"],
-            index=["Email", "Phone", "SMS"].index(st.session_state.user_profile.get("contact_method", "Email"))
-        )
-    
-    with profile_col2:
-        st.session_state.user_profile["budget_preference"] = st.selectbox(
-            "Budget Preference",
-            ["LowPremium", "Balanced", "HighCoverage"],
-            index=["LowPremium", "Balanced", "HighCoverage"].index(st.session_state.user_profile.get("budget_preference", "Balanced"))
-        )
-        
-        st.session_state.user_profile["coverage_preference"] = st.selectbox(
-            "Coverage Level",
-            ["Minimum", "Standard", "Premium"],
-            index=["Minimum", "Standard", "Premium"].index(st.session_state.user_profile.get("coverage_preference", "Standard"))
-        )
-        
-        st.session_state.user_profile["risk_tolerance"] = st.selectbox(
-            "Risk Tolerance",
-            ["Conservative", "Moderate", "Aggressive"],
-            index=["Conservative", "Moderate", "Aggressive"].index(st.session_state.user_profile.get("risk_tolerance", "Moderate"))
-        )
-    
-    st.session_state.user_profile["insurance_types"] = st.multiselect(
-        "Insurance Types Interested In",
-        ["Home", "Auto", "Pet", "Health", "Life", "Business"],
-        default=st.session_state.user_profile.get("insurance_types", ["Home"])
-    )
-    
-    st.session_state.user_profile["preferred_locations"] = st.multiselect(
-        "Preferred Locations (States)",
-        ["California", "Texas", "Florida", "New York", "Pennsylvania", "Arizona", "Georgia", "Illinois"],
-        default=st.session_state.user_profile.get("preferred_locations", ["California"])
-    )
-    
-    st.session_state.user_profile["savings_profile"] = st.checkbox(
-        "📁 Save this profile for future sessions",
-        value=st.session_state.user_profile.get("savings_profile", False)
-    )
-    
-    profile_col1, profile_col2, profile_col3 = st.columns(3)
-    with profile_col1:
-        if st.button("✅ Save Profile", use_container_width=True):
-            st.session_state.show_profile_editor = False
-            st.success("✅ Profile saved successfully!")
-            st.rerun()
-    
-    with profile_col2:
-        if st.button("🔄 Reset to Default", use_container_width=True):
-            st.session_state.user_profile = {
-                "name": "Guest User",
-                "email": "",
-                "budget_preference": "Balanced",
-                "coverage_preference": "Standard",
-                "risk_tolerance": "Moderate",
-                "insurance_types": ["Home"],
-                "preferred_locations": ["California"],
-                "savings_profile": False,
-                "contact_method": "Email"
-            }
-            st.success("✅ Profile reset to defaults!")
-            st.rerun()
-    
-    with profile_col3:
-        if st.button("❌ Cancel", use_container_width=True):
-            st.session_state.show_profile_editor = False
-            st.rerun()
-    
-    st.markdown("---")
-
-# ====== SETTINGS MODAL ======
-if st.session_state.get("show_settings"):
-    st.markdown("---")
-    st.subheader("⚙️ Application Settings")
-    
-    settings_col1, settings_col2 = st.columns(2)
-    
-    with settings_col1:
-        st.write("**Search Settings**")
-        st.checkbox("🔐 Use web scraper for real data", value=True)
-        st.checkbox("📊 Show detailed analytics", value=True)
-        st.checkbox("🤖 Use AI recommendations", value=True)
-        st.checkbox("💾 Auto-save comparisons", value=False)
-    
-    with settings_col2:
-        st.write("**Display Settings**")
-        st.selectbox("Theme", ["Light", "Dark", "Auto"])
-        st.selectbox("Results per page", [5, 10, 15, 20])
-        st.checkbox("📱 Mobile-friendly layout", value=True)
-        st.checkbox("⚡ Fast mode (less animations)", value=False)
-    
-    if st.button("✅ Save Settings", use_container_width=True):
-        st.session_state.show_settings = False
-        st.success("✅ Settings saved!")
-        st.rerun()
-    
-    st.markdown("---")
+# ====== MAIN SEARCH INTERFACE ======
 st.markdown("<div class='search-container'>", unsafe_allow_html=True)
 st.markdown("<div class='search-title'>🔍 Find Your Perfect Insurance Plan</div>", unsafe_allow_html=True)
 
@@ -594,7 +449,7 @@ if DYNAMIC_SEARCH_AVAILABLE:
                     with col2:
                         st.markdown(f"<div class='metric-box'><div class='metric-value'>${plan.get('annual_premium', 0)/12:.0f}</div><div class='metric-label'>Monthly Premium</div></div>", unsafe_allow_html=True)
                         st.markdown(f"<div class='metric-box'><div class='metric-value'>{plan.get('rating', 0):.1f}⭐</div><div class='metric-label'>Customer Rating</div></div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='metric-box'><div class='metric-value'>{plan.get('claim_settlement_days', 0)}d</div><div class='metric-label'>Claim Cycle Tim</div></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='metric-box'><div class='metric-value'>{plan.get('claim_settlement_days', 0)}d</div><div class='metric-label'>Claim Cycle Time</div></div>", unsafe_allow_html=True)
                     
                     st.markdown("---")
 
@@ -624,27 +479,6 @@ if DYNAMIC_SEARCH_AVAILABLE:
                                 for c in std_cov.get('not_covered', []):
                                     st.write(f"- {c}")
 
-                        # Render any dynamic scraped data if available (from insurance_scraped_data.json)
-                        dyn = scrap_meta.get('dynamic_data') if isinstance(scrap_meta, dict) else None
-                        if dyn:
-                            with st.expander("Available Product & Claim & Coverage insights", expanded=False):
-                                for key, val in dyn.items():
-                                    st.markdown(f"**{key.replace('_', ' ').title()}:**")
-                                    # If the value is a list of sources/info dicts, show them nicely
-                                    if isinstance(val, list):
-                                        for item in val:
-                                            if isinstance(item, dict):
-                                                info = item.get('information') or item.get('info') or str(item)
-                                                src = item.get('source')
-                                                if src:
-                                                    st.write(f"- {info}  —  [{src}]({src})")
-                                                else:
-                                                    st.write(f"- {info}")
-                                            else:
-                                                st.write(f"- {item}")
-                                    else:
-                                        st.write(str(val))
-
                     # Show scraped dynamic outputs if available (from running scrap.py)
                     try:
                         scraped = get_company_scrape(plan.get('insurer'))
@@ -655,7 +489,8 @@ if DYNAMIC_SEARCH_AVAILABLE:
                         # scraped contains {"static_data":..., "dynamic_data":{...}}
                         dyn = scraped.get('dynamic_data', {})
                         if dyn:
-                            with st.expander("Details of Product,Claim & Coverage Insights", expanded=False):
+                            with st.expander("📋 Details of Product, Claim & Coverage Insights", expanded=False):
+                                st.markdown("<div class='info-box'>", unsafe_allow_html=True)
                                 for key, value in dyn.items():
                                     # value could be a list of dicts or a string
                                     display_key = key.replace('_', ' ').title()
@@ -672,6 +507,7 @@ if DYNAMIC_SEARCH_AVAILABLE:
                                             st.write(f"**{display_key}:** {info}")
                                             if src:
                                                 st.markdown(f"*Source:* {src}")
+                                st.markdown("</div>", unsafe_allow_html=True)
 
                     if st.button(f"View Full Details", key=f"btn_{idx}"):
                         st.session_state.selected_plans.append(plan)
@@ -749,17 +585,9 @@ if DYNAMIC_SEARCH_AVAILABLE:
             if show_recommendations and st.session_state.current_search_results:
                 st.subheader("🤖 AI-Powered Recommendations")
                 
-                # Show recommendations based on user profile
-                st.info(f"""
-                💡 **Personalized for your profile:**
-                - Budget Preference: {st.session_state.user_profile['budget_preference']}
-                - Coverage Level: {st.session_state.user_profile['coverage_preference']}
-                - Risk Tolerance: {st.session_state.user_profile['risk_tolerance']}
-                """)
-                
                 try:
                     if st.session_state.agents_controller:
-                        with st.spinner("Analyzing plans with AI based on your profile..."):
+                        with st.spinner("Analyzing plans with AI..."):
                             recommendations = st.session_state.agents_controller.search_and_compare(
                                 search_query,
                                 st.session_state.current_search_results
@@ -777,22 +605,6 @@ if DYNAMIC_SEARCH_AVAILABLE:
                         st.warning("Agent controller not available")
                 except Exception as e:
                     st.info(f"AI analysis: {str(e)}")
-                
-                # Additional personalized tips
-                with st.expander("💡 Personalized Tips for You"):
-                    if st.session_state.user_profile['budget_preference'] == 'LowPremium':
-                        st.write("💡 You prefer low premiums. Consider higher deductibles to reduce monthly costs.")
-                    elif st.session_state.user_profile['budget_preference'] == 'HighCoverage':
-                        st.write("💡 You prefer comprehensive coverage. Look for plans with higher coverage limits and lower deductibles.")
-                    else:
-                        st.write("💡 You prefer balanced coverage. These plans offer good protection at reasonable premiums.")
-                    
-                    if st.session_state.user_profile['risk_tolerance'] == 'Conservative':
-                        st.write("🛡️ You have conservative risk tolerance. These plans include more comprehensive protections.")
-                    elif st.session_state.user_profile['risk_tolerance'] == 'Aggressive':
-                        st.write("⚡ You have aggressive risk tolerance. Consider plans with lower premiums and higher deductibles.")
-                    
-                    st.write(f"📍 Showing recommendations for: {', '.join(st.session_state.user_profile['preferred_locations'])}")
 
         with tab4:
             # Detailed plan information
@@ -955,25 +767,6 @@ else:
 
 # ====== SIDEBAR ======
 with st.sidebar:
-    st.markdown("---")
-    
-    # User profile summary in sidebar
-    st.subheader("👤 Your Profile")
-    profile_info = f"""
-    **Name:** {st.session_state.user_profile['name']}
-    
-    **Preferences:**
-    - 💰 Budget: {st.session_state.user_profile['budget_preference']}
-    - 🛡️ Coverage: {st.session_state.user_profile['coverage_preference']}
-    - ⚠️ Risk: {st.session_state.user_profile['risk_tolerance']}
-    - 📍 Locations: {', '.join(st.session_state.user_profile['preferred_locations'][:2])}
-    """
-    st.markdown(profile_info)
-    
-    if st.button("✏️ Edit Profile", use_container_width=True):
-        st.session_state.show_profile_editor = True
-        st.rerun()
-    
     st.markdown("---")
     st.subheader("📊 Search Statistics")
     

@@ -1,0 +1,16 @@
+[server]
+headless = true
+port = 8501
+address = "localhost"
+baseUrlPath = ""
+enableXsrfProtection = true
+enableCORS = true
+
+[client]
+showErrorDetails = true
+
+[logger]
+level = "info"
+
+[browser]
+gatherUsageStats = false
