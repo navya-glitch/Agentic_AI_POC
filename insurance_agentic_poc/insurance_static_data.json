@@ -1,0 +1,81 @@
+{
+    "State Farm": {
+        "company_name": "State Farm Insurance",
+        "logo_url": "https://www.statefarm.com/content/dam/sf-www/images/sf-logo.svg",
+        "founded_year": 1922,
+        "headquarters": "Bloomington, Illinois, USA",
+        "third_party_partners": [
+            "CARSTAR",
+            "Service Master",
+            "1-800-WATER-DAMAGE",
+            "Paul Davis Restoration",
+            "Rainbow International",
+            "Glass America"
+        ],
+        "standard_coverage": {
+            "covered": [
+                "Auto collision and comprehensive",
+                "Property damage liability",
+                "Bodily injury liability",
+                "Home fire and theft",
+                "Personal liability",
+                "Medical payments"
+            ],
+            "not_covered": [
+                "Flood damage (requires separate policy)",
+                "Earthquake damage (requires separate policy)",
+                "Normal wear and tear",
+                "Intentional damage",
+                "War or nuclear hazard"
+            ]
+        },
+        "product_types": [
+            "Auto Insurance",
+            "Home Insurance",
+            "Renters Insurance",
+            "Life Insurance",
+            "Health Insurance",
+            "Business Insurance"
+        ]
+    },
+    "AIG": {
+        "company_name": "American International Group (AIG)",
+        "logo_url": "https://www.aig.com/content/dam/aig/america-canada/us/images/logo/aig-logo.svg",
+        "founded_year": 1919,
+        "headquarters": "New York City, New York, USA",
+        "third_party_partners": [
+            "Crawford & Company",
+            "Sedgwick",
+            "Gallagher Bassett",
+            "Cunningham Lindsey",
+            "ESIS (AIG owned)",
+            "Vidal (Health Network Partner)"
+        ],
+        "standard_coverage": {
+            "covered": [
+                "Commercial property and liability",
+                "Auto physical damage",
+                "Travel insurance",
+                "Accident and health",
+                "Workers compensation",
+                "Professional liability"
+            ],
+            "not_covered": [
+                "Flood without rider",
+                "Earthquake without rider",
+                "Acts of war",
+                "Nuclear incidents",
+                "Intentional acts",
+                "Prior known losses"
+            ]
+        },
+        "product_types": [
+            "Commercial Insurance",
+            "Personal Auto Insurance",
+            "Travel Insurance",
+            "Accident & Health Insurance",
+            "Life Insurance",
+            "Homeowners Insurance"
+        ]
+    }
+}

@@ -1,0 +1,107 @@
+{
+    "scrape_date": "2025-12-07T07:42:27.278807",
+    "location": "cd insurance_agentic_poc; python -c \"from scrap import InsuranceScraperAgent; agent = InsuranceScraperAgent(); location = 'Texas'; print(f'Running scraper for location: {location}'); print('=' * 70); final_results = {'scrape_date': __import__('datetime').datetime.now().isoformat(), 'location': location, 'companies': {}}; import json; static_data = agent.load_static_data(); companies = ['State Farm', 'AIG']; [final_results['companies'].update({company: {'static_data': static_data[company], 'dynamic_data': agent.scrape_dynamic_data(company, location)}}) for company in companies if company in static_data]; print(f'Scraping complete for {location}!'); print(json.dumps(final_results, indent=2)[:500])\"",
+    "companies": {
+        "State Farm": {
+            "static_data": {
+                "company_name": "State Farm Insurance",
+                "logo_url": "https://www.statefarm.com/content/dam/sf-www/images/sf-logo.svg",
+                "founded_year": 1922,
+                "headquarters": "Bloomington, Illinois, USA",
+                "third_party_partners": [
+                    "CARSTAR",
+                    "Service Master",
+                    "1-800-WATER-DAMAGE",
+                    "Paul Davis Restoration",
+                    "Rainbow International",
+                    "Glass America"
+                ],
+                "standard_coverage": {
+                    "covered": [
+                        "Auto collision and comprehensive",
+                        "Property damage liability",
+                        "Bodily injury liability",
+                        "Home fire and theft",
+                        "Personal liability",
+                        "Medical payments"
+                    ],
+                    "not_covered": [
+                        "Flood damage (requires separate policy)",
+                        "Earthquake damage (requires separate policy)",
+                        "Normal wear and tear",
+                        "Intentional damage",
+                        "War or nuclear hazard"
+                    ]
+                },
+                "product_types": [
+                    "Auto Insurance",
+                    "Home Insurance",
+                    "Renters Insurance",
+                    "Life Insurance",
+                    "Health Insurance",
+                    "Business Insurance"
+                ]
+            },
+            "dynamic_data": {
+                "claims_settled_recent": "No search results found",
+                "customers_past_5_years": "No search results found",
+                "products_sold_location": "No search results found",
+                "active_policyholders_location": "No search results found",
+                "coverage_trends_location": "No search results found",
+                "recommended_coverage_location": "No search results found",
+                "current_deductibles": "No search results found"
+            }
+        },
+        "AIG": {
+            "static_data": {
+                "company_name": "American International Group (AIG)",
+                "logo_url": "https://www.aig.com/content/dam/aig/america-canada/us/images/logo/aig-logo.svg",
+                "founded_year": 1919,
+                "headquarters": "New York City, New York, USA",
+                "third_party_partners": [
+                    "Crawford & Company",
+                    "Sedgwick",
+                    "Gallagher Bassett",
+                    "Cunningham Lindsey",
+                    "ESIS (AIG owned)",
+                    "Vidal (Health Network Partner)"
+                ],
+                "standard_coverage": {
+                    "covered": [
+                        "Commercial property and liability",
+                        "Auto physical damage",
+                        "Travel insurance",
+                        "Accident and health",
+                        "Workers compensation",
+                        "Professional liability"
+                    ],
+                    "not_covered": [
+                        "Flood without rider",
+                        "Earthquake without rider",
+                        "Acts of war",
+                        "Nuclear incidents",
+                        "Intentional acts",
+                        "Prior known losses"
+                    ]
+                },
+                "product_types": [
+                    "Commercial Insurance",
+                    "Personal Auto Insurance",
+                    "Travel Insurance",
+                    "Accident & Health Insurance",
+                    "Life Insurance",
+                    "Homeowners Insurance"
+                ]
+            },
+            "dynamic_data": {
+                "claims_settled_recent": "No search results found",
+                "customers_past_5_years": "No search results found",
+                "products_sold_location": "No search results found",
+                "active_policyholders_location": "No search results found",
+                "coverage_trends_location": "No search results found",
+                "recommended_coverage_location": "No search results found",
+                "current_deductibles": "No search results found"
+            }
+        }
+    }
+}

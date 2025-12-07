@@ -1,0 +1,69 @@
+{
+  "app": "Insurance Agentic POC",
+  "version": "1.0.0",
+  "release_date": "2025-12-05",
+  "description": "AI-powered insurance search and comparison platform with multi-agent architecture",
+  "author": "Insurance Team",
+  "features": [
+    "Natural language insurance search",
+    "Multi-agent orchestration (Intent, Enhancement, Connectors, Recommendation)",
+    "Real-time plan comparison",
+    "Coverage details and claim approval timelines",
+    "AI-powered recommendations",
+    "Multiple insurance types support (Home, Auto, Health, Fire, Renters)",
+    "Streamlit-based web UI",
+    "Ollama LLM integration"
+  ],
+  "python_version": "3.8+",
+  "dependencies": {
+    "streamlit": "1.39.0",
+    "langchain": "1.1.2",
+    "langgraph": "1.0.4",
+    "ollama": "0.6.1",
+    "requests": "2.32.5",
+    "beautifulsoup4": "4.14.3",
+    "pydantic": "2.12.5"
+  },
+  "components": {
+    "ui": {
+      "type": "Streamlit",
+      "file": "ui.py",
+      "port": 8501,
+      "description": "Web interface for insurance search and comparison"
+    },
+    "agents": {
+      "intent_agent": "Extracts structured intent from natural language queries",
+      "query_enhancement_agent": "Adds context and smart defaults to queries",
+      "connectors_agent": "Fetches and scores matching insurance plans",
+      "recommendation_agent": "Generates AI-powered recommendations"
+    },
+    "data": {
+      "file": "data_plans.py",
+      "description": "Dummy insurance plans database with coverage and claim details"
+    },
+    "llm": {
+      "type": "Ollama",
+      "model": "gemma3:1b",
+      "url": "http://localhost:11434/api/chat"
+    }
+  },
+  "supported_insurance_types": [
+    "Home Insurance",
+    "Renters Insurance",
+    "Auto Insurance",
+    "Fire Insurance",
+    "Health Insurance"
+  ],
+  "changes": {
+    "1.0.0": [
+      "Initial release",
+      "Streamlit UI with search functionality",
+      "Multi-agent architecture for intent analysis and recommendations",
+      "Coverage details display",
+      "Claim approval timeline information",
+      "Monthly and annual premium quotes",
+      "Plan comparison tables",
+      "JSON data export"
+    ]
+  }
+}

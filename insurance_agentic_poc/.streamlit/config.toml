@@ -1,0 +1,17 @@
+[client]
+showErrorDetails = false
+toolbarMode = "developer"
+
+[logger]
+level = "error"
+
+[server]
+headless = true
+port = 8501
+runOnSave = false
+address = "0.0.0.0"
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+gatherUsageStats = false
