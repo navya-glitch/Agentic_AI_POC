@@ -26,100 +26,50 @@ from agents.intent_agent import extract_intent
 from agents.query_enhancement_agent import enhance_query
 from agents.connectors_agent import fetch_and_score_plans
 from agents.recommendation_agent import generate_recommendation
-try:
-    from policy_explanations import get_policy_explanation, format_coverage_checklist
-except ImportError:
-    # Fallback if policy_explanations is not available
-    def get_policy_explanation(*args, **kwargs):
-        return {}
-    def format_coverage_checklist(*args, **kwargs):
-        return ""
-try:
-    from policy_manager import get_all_policies, save_policy, get_renewal_reminders
-except ImportError:
-    # Fallback if policy_manager is not available
-    def get_all_policies(*args, **kwargs):
-        return []
-    def save_policy(*args, **kwargs):
-        return None
-    def get_renewal_reminders(*args, **kwargs):
-        return []
-
-try:
-    from support_hub import search_faq, FAQ_TOPICS
-except ImportError:
-    # Fallback if support_hub is not available
-    def search_faq(*args, **kwargs):
-        return []
-    FAQ_TOPICS = {}
+from policy_explanations import get_policy_explanation, format_coverage_checklist
+from policy_manager import get_all_policies, save_policy, get_renewal_reminders
+from support_hub import search_faq, FAQ_TOPICS
+# Optional imports — provide light fallbacks if modules are missing or raise
 try:
     from recommendation_engine import rank_plans_for_user
-except ImportError:
-    def rank_plans_for_user(*args, **kwargs):
-        return []
+except Exception:
+    def rank_plans_for_user(plans, user_profile):
+        # Simple fallback: return up to three plans with categories set
+        out = []
+        for i, p in enumerate(plans[:3]):
+            cat = ["🏆 Best Value", "⭐ Ideal Coverage", "💡 Alternative"][i] if i < 3 else ""
+            item = {"category": cat, **(p or {})}
+            out.append(item)
+        return out
 
 try:
     from company_profiles import get_company_profile
-except ImportError:
-    def get_company_profile(*args, **kwargs):
-        return {}
+except Exception:
+    def get_company_profile(name: str):
+        return {"company_name": name or "Unknown", "description": "No profile available."}
 
 try:
     from service_center_locator import find_nearest_service_center, format_service_center_info
-except ImportError:
-    def find_nearest_service_center(*args, **kwargs):
-        return None
-    def format_service_center_info(*args, **kwargs):
-        return ""
+except Exception:
+    def find_nearest_service_center(*a, **k):
+        return []
+    def format_service_center_info(info):
+        return "No service centers available."
 
 try:
     from comparison_charts import create_premium_comparison_chart, create_coverage_vs_premium_chart
-except ImportError:
-    def create_premium_comparison_chart(*args, **kwargs):
+except Exception:
+    def create_premium_comparison_chart(df):
         return None
-    def create_coverage_vs_premium_chart(*args, **kwargs):
+    def create_coverage_vs_premium_chart(df):
         return None
 
 try:
     from area_eligibility import AREA_ELIGIBILITY
-except ImportError:
+except Exception:
     AREA_ELIGIBILITY = {}
-
-from data_scraper import InsuranceScraperAgent
-
-# Helper: render company metadata for a plan (excludes logo_url)
-def render_company_fields(plan):
-    try:
-        company = plan.get("company") or get_company_profile(plan.get("insurer"))
-    except Exception:
-        company = plan.get("company") or {}
-    company = company or {}
-
-    founded = company.get("founded_year") or company.get("founded")
-    hq = company.get("headquarters") or company.get("head_office") or company.get("headquarter")
-    partners = company.get("third_party_partners") or company.get("partners") or []
-    coverage = company.get("standard_coverage") or company.get("standard_coverage_items") or []
-
-    if not (founded or hq or partners or coverage):
-        return
-
-    st.markdown("**Company Info**")
-    if founded:
-        st.write(f"**Founded:** {founded}")
-    if hq:
-        st.write(f"**Headquarters:** {hq}")
-    if partners:
-        if isinstance(partners, (list, tuple)):
-            st.write("**Partners:** " + ", ".join(str(p) for p in partners))
-        else:
-            st.write(f"**Partners:** {partners}")
-    if coverage:
-        st.write("**Standard Coverage:**")
-        if isinstance(coverage, (list, tuple)):
-            for c in coverage:
-                st.write(f"- {c}")
-        else:
-            st.write(f"- {coverage}")
+from scrap_fields import get_scrap_fields_for_company
+from scrap_output_reader import get_company_scrape, get_scrape_metadata
 
 # ====== PAGE CONFIG ======
 st.set_page_config(
@@ -334,52 +284,6 @@ button {
 </style>
 """, unsafe_allow_html=True)
 
-# ====== HELPER FUNCTIONS ======
-def get_company_info(company_name):
-    """Helper function to get company static data"""
-    if "scraper_agent" not in st.session_state:
-        st.session_state.scraper_agent = InsuranceScraperAgent()
-    return st.session_state.scraper_agent.get_company_static_data(company_name)
-
-def display_company_static_info(company_data, compact=False):
-    """Display company static information"""
-    if not company_data:
-        return
-    
-    if compact:
-        # Compact display for list views
-        if company_data.get('founded_year'):
-            st.caption(f"📅 Founded: {company_data.get('founded_year')} | 📍 {company_data.get('headquarters', 'N/A')}")
-        if company_data.get('product_types'):
-            st.caption(f"📦 Products: {len(company_data.get('product_types', []))} types")
-        if company_data.get('third_party_partners'):
-            st.caption(f"🤝 Partners: {len(company_data.get('third_party_partners', []))} companies")
-    else:
-        # Full display
-        if company_data.get('founded_year'):
-            st.markdown(f"**Founded:** {company_data.get('founded_year')}")
-        if company_data.get('headquarters'):
-            st.markdown(f"**Headquarters:** {company_data.get('headquarters')}")
-        if company_data.get('product_types'):
-            st.markdown(f"**Product Types:** {len(company_data.get('product_types', []))} types offered")
-        if company_data.get('third_party_partners'):
-            st.markdown(f"**Partners:** {len(company_data.get('third_party_partners', []))} third-party companies")
-
-def display_company_coverage_summary(company_data):
-    """Display coverage summary in compact format"""
-    if not company_data or not company_data.get('standard_coverage'):
-        return
-    
-    coverage = company_data.get('standard_coverage', {})
-    covered_count = len(coverage.get('covered', []))
-    not_covered_count = len(coverage.get('not_covered', []))
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Covered Items", covered_count)
-    with col2:
-        st.metric("Exclusions", not_covered_count)
-
 # ====== INITIALIZE SESSION STATE ======
 if "search_history" not in st.session_state:
     st.session_state.search_history = []
@@ -389,16 +293,159 @@ if "selected_plans" not in st.session_state:
     st.session_state.selected_plans = []
 if "cache_stats" not in st.session_state:
     st.session_state.cache_stats = {"hits": 0, "misses": 0}
-if "scraper_agent" not in st.session_state:
-    st.session_state.scraper_agent = InsuranceScraperAgent()
+
+# ====== USER PROFILE SESSION STATE ======
+if "user_profile" not in st.session_state:
+    st.session_state.user_profile = {
+        "name": "Guest User",
+        "email": "",
+        "budget_preference": "Balanced",
+        "coverage_preference": "Standard",
+        "risk_tolerance": "Moderate",
+        "insurance_types": ["Home"],
+        "preferred_locations": ["California"],
+        "savings_profile": False,
+        "contact_method": "Email"
+    }
 
 # ====== HEADER ======
 col1, col2, col3 = st.columns([1, 2, 1])
+with col1:
+    with st.popover("👤 Profile", use_container_width=True):
+        st.subheader("👤 User Profile")
+        st.write(f"**Name:** {st.session_state.user_profile['name']}")
+        st.write(f"**Budget Preference:** {st.session_state.user_profile['budget_preference']}")
+        st.write(f"**Coverage Level:** {st.session_state.user_profile['coverage_preference']}")
+        st.markdown("---")
+        if st.button("✏️ Edit Profile", use_container_width=True):
+            st.session_state.show_profile_editor = True
+
 with col2:
     st.markdown("<div class='main-title'>🏆 InsureAI Pro</div>", unsafe_allow_html=True)
     st.markdown("<div class='subtitle'>Smart Insurance Solutions Powered by AI</div>", unsafe_allow_html=True)
 
-# ====== MAIN SEARCH INTERFACE ======
+with col3:
+    if st.button("⚙️ Settings", use_container_width=True):
+        st.session_state.show_settings = True
+
+# ====== USER PROFILE EDITOR MODAL ======
+if st.session_state.get("show_profile_editor"):
+    st.markdown("---")
+    st.subheader("✏️ Edit Your Profile")
+    
+    profile_col1, profile_col2 = st.columns(2)
+    
+    with profile_col1:
+        st.session_state.user_profile["name"] = st.text_input(
+            "Full Name",
+            value=st.session_state.user_profile.get("name", "Guest User")
+        )
+        
+        st.session_state.user_profile["email"] = st.text_input(
+            "Email Address",
+            value=st.session_state.user_profile.get("email", ""),
+            placeholder="your@email.com"
+        )
+        
+        st.session_state.user_profile["contact_method"] = st.selectbox(
+            "Preferred Contact Method",
+            ["Email", "Phone", "SMS"],
+            index=["Email", "Phone", "SMS"].index(st.session_state.user_profile.get("contact_method", "Email"))
+        )
+    
+    with profile_col2:
+        st.session_state.user_profile["budget_preference"] = st.selectbox(
+            "Budget Preference",
+            ["LowPremium", "Balanced", "HighCoverage"],
+            index=["LowPremium", "Balanced", "HighCoverage"].index(st.session_state.user_profile.get("budget_preference", "Balanced"))
+        )
+        
+        st.session_state.user_profile["coverage_preference"] = st.selectbox(
+            "Coverage Level",
+            ["Minimum", "Standard", "Premium"],
+            index=["Minimum", "Standard", "Premium"].index(st.session_state.user_profile.get("coverage_preference", "Standard"))
+        )
+        
+        st.session_state.user_profile["risk_tolerance"] = st.selectbox(
+            "Risk Tolerance",
+            ["Conservative", "Moderate", "Aggressive"],
+            index=["Conservative", "Moderate", "Aggressive"].index(st.session_state.user_profile.get("risk_tolerance", "Moderate"))
+        )
+    
+    st.session_state.user_profile["insurance_types"] = st.multiselect(
+        "Insurance Types Interested In",
+        ["Home", "Auto", "Pet", "Health", "Life", "Business"],
+        default=st.session_state.user_profile.get("insurance_types", ["Home"])
+    )
+    
+    st.session_state.user_profile["preferred_locations"] = st.multiselect(
+        "Preferred Locations (States)",
+        ["California", "Texas", "Florida", "New York", "Pennsylvania", "Arizona", "Georgia", "Illinois"],
+        default=st.session_state.user_profile.get("preferred_locations", ["California"])
+    )
+    
+    st.session_state.user_profile["savings_profile"] = st.checkbox(
+        "📁 Save this profile for future sessions",
+        value=st.session_state.user_profile.get("savings_profile", False)
+    )
+    
+    profile_col1, profile_col2, profile_col3 = st.columns(3)
+    with profile_col1:
+        if st.button("✅ Save Profile", use_container_width=True):
+            st.session_state.show_profile_editor = False
+            st.success("✅ Profile saved successfully!")
+            st.rerun()
+    
+    with profile_col2:
+        if st.button("🔄 Reset to Default", use_container_width=True):
+            st.session_state.user_profile = {
+                "name": "Guest User",
+                "email": "",
+                "budget_preference": "Balanced",
+                "coverage_preference": "Standard",
+                "risk_tolerance": "Moderate",
+                "insurance_types": ["Home"],
+                "preferred_locations": ["California"],
+                "savings_profile": False,
+                "contact_method": "Email"
+            }
+            st.success("✅ Profile reset to defaults!")
+            st.rerun()
+    
+    with profile_col3:
+        if st.button("❌ Cancel", use_container_width=True):
+            st.session_state.show_profile_editor = False
+            st.rerun()
+    
+    st.markdown("---")
+
+# ====== SETTINGS MODAL ======
+if st.session_state.get("show_settings"):
+    st.markdown("---")
+    st.subheader("⚙️ Application Settings")
+    
+    settings_col1, settings_col2 = st.columns(2)
+    
+    with settings_col1:
+        st.write("**Search Settings**")
+        st.checkbox("🔐 Use web scraper for real data", value=True)
+        st.checkbox("📊 Show detailed analytics", value=True)
+        st.checkbox("🤖 Use AI recommendations", value=True)
+        st.checkbox("💾 Auto-save comparisons", value=False)
+    
+    with settings_col2:
+        st.write("**Display Settings**")
+        st.selectbox("Theme", ["Light", "Dark", "Auto"])
+        st.selectbox("Results per page", [5, 10, 15, 20])
+        st.checkbox("📱 Mobile-friendly layout", value=True)
+        st.checkbox("⚡ Fast mode (less animations)", value=False)
+    
+    if st.button("✅ Save Settings", use_container_width=True):
+        st.session_state.show_settings = False
+        st.success("✅ Settings saved!")
+        st.rerun()
+    
+    st.markdown("---")
 st.markdown("<div class='search-container'>", unsafe_allow_html=True)
 st.markdown("<div class='search-title'>🔍 Find Your Perfect Insurance Plan</div>", unsafe_allow_html=True)
 
@@ -497,7 +544,7 @@ if DYNAMIC_SEARCH_AVAILABLE:
 
                 # Display results summary
                 if search_results:
-                    col1, col2, col3, col4, col5 = st.columns(5)
+                    col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
                         st.markdown(f"<div class='metric-box'><div class='metric-value'>{len(search_results)}</div><div class='metric-label'>Plans Found</div></div>", unsafe_allow_html=True)
@@ -513,30 +560,8 @@ if DYNAMIC_SEARCH_AVAILABLE:
                     with col4:
                         max_coverage = max(p.get("coverage_amount", 0) for p in search_results)
                         st.markdown(f"<div class='metric-box'><div class='metric-value'>${max_coverage/1000:.0f}K</div><div class='metric-label'>Max Coverage</div></div>", unsafe_allow_html=True)
-                    
-                    with col5:
-                        # Get unique companies and show company count
-                        unique_companies = set(p.get('insurer', '') for p in search_results)
-                        st.markdown(f"<div class='metric-box'><div class='metric-value'>{len(unique_companies)}</div><div class='metric-label'>Companies</div></div>", unsafe_allow_html=True)
 
-                    st.markdown(f"<div class='info-box'>✅ Found {len(search_results)} insurance plans from {len(unique_companies)} companies matching your criteria!</div>", unsafe_allow_html=True)
-                    
-                    # Show company badges with static info
-                    st.markdown("---")
-                    st.markdown("**🏢 Companies in Results:**")
-                    company_cols = st.columns(min(len(unique_companies), 5))
-                    for idx, company_name in enumerate(list(unique_companies)[:5]):
-                        with company_cols[idx]:
-                            company_data = get_company_info(company_name)
-                            if company_data:
-                                st.markdown(f"**{company_name}**")
-                                if company_data.get('founded_year'):
-                                    years_old = datetime.now().year - company_data.get('founded_year')
-                                    st.caption(f"Est. {company_data.get('founded_year')} ({years_old} yrs)")
-                                if company_data.get('product_types'):
-                                    st.caption(f"{len(company_data.get('product_types', []))} product types")
-                            else:
-                                st.markdown(f"**{company_name}**")
+                    st.markdown(f"<div class='info-box'>✅ Found {len(search_results)} insurance plans matching your criteria!</div>", unsafe_allow_html=True)
                 else:
                     st.warning("No plans found. Try different search terms.")
 
@@ -565,32 +590,89 @@ if DYNAMIC_SEARCH_AVAILABLE:
                         st.markdown(f"**Coverage:** ${plan.get('coverage_amount', 0):,.0f}")
                         st.markdown(f"**Features:** {', '.join(plan.get('features', [])[:3])}")
                         st.markdown(f"**Available in:** {', '.join(plan.get('location_availability', [])[:2])}")
-                        
-                        # Add company static information
-                        st.markdown("---")
-                        company_name = plan.get('insurer', '')
-                        company_data = get_company_info(company_name)
-                        if company_data:
-                            st.markdown("**🏢 Company Info:**")
-                            display_company_static_info(company_data, compact=True)
-                            
-                            # Coverage summary
-                            if company_data.get('standard_coverage'):
-                                with st.expander("📋 Coverage Summary", expanded=False):
-                                    display_company_coverage_summary(company_data)
                     
                     with col2:
-                        st.markdown(f"<div class='metric-box'><div class='metric-value'>${plan.get('annual_premium', 0)/12:.0f}</div><div class='metric-label'>Monthly</div></div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='metric-box'><div class='metric-value'>{plan.get('rating', 0):.1f}⭐</div><div class='metric-label'>Rating</div></div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='metric-box'><div class='metric-value'>{plan.get('claim_settlement_days', 0)}d</div><div class='metric-label'>Claim Days</div></div>", unsafe_allow_html=True)
-                        
-                        # Company metrics
-                        if company_data:
-                            if company_data.get('founded_year'):
-                                years_old = datetime.now().year - company_data.get('founded_year')
-                                st.markdown(f"<div class='metric-box'><div class='metric-value'>{years_old}</div><div class='metric-label'>Years in Business</div></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='metric-box'><div class='metric-value'>${plan.get('annual_premium', 0)/12:.0f}</div><div class='metric-label'>Monthly Premium</div></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='metric-box'><div class='metric-value'>{plan.get('rating', 0):.1f}⭐</div><div class='metric-label'>Customer Rating</div></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='metric-box'><div class='metric-value'>{plan.get('claim_settlement_days', 0)}d</div><div class='metric-label'>Claim Cycle Tim</div></div>", unsafe_allow_html=True)
                     
                     st.markdown("---")
+
+                    # Display additional company metadata (from scrap.py static fields)
+                    try:
+                        scrap_meta = get_scrap_fields_for_company(plan.get('insurer'))
+                    except Exception:
+                        scrap_meta = None
+
+                    if scrap_meta:
+                        st.markdown("**Company Info:**")
+                        st.write(f"Founded: {scrap_meta.get('founded_year', 'N/A')}")
+                        st.write(f"Headquarters: {scrap_meta.get('headquarters', 'N/A')}")
+
+                        partners = scrap_meta.get('third_party_partners') or []
+                        if partners:
+                            with st.expander("Third-party partners", expanded=False):
+                                for p in partners:
+                                    st.write(f"- {p}")
+
+                        std_cov = scrap_meta.get('standard_coverage', {})
+                        if std_cov:
+                            with st.expander("Standard Coverage - Covered", expanded=False):
+                                for c in std_cov.get('covered', []):
+                                    st.write(f"- {c}")
+                            with st.expander("Standard Coverage - Not Covered", expanded=False):
+                                for c in std_cov.get('not_covered', []):
+                                    st.write(f"- {c}")
+
+                        # Render any dynamic scraped data if available (from insurance_scraped_data.json)
+                        dyn = scrap_meta.get('dynamic_data') if isinstance(scrap_meta, dict) else None
+                        if dyn:
+                            with st.expander("Available Product & Claim & Coverage insights", expanded=False):
+                                for key, val in dyn.items():
+                                    st.markdown(f"**{key.replace('_', ' ').title()}:**")
+                                    # If the value is a list of sources/info dicts, show them nicely
+                                    if isinstance(val, list):
+                                        for item in val:
+                                            if isinstance(item, dict):
+                                                info = item.get('information') or item.get('info') or str(item)
+                                                src = item.get('source')
+                                                if src:
+                                                    st.write(f"- {info}  —  [{src}]({src})")
+                                                else:
+                                                    st.write(f"- {info}")
+                                            else:
+                                                st.write(f"- {item}")
+                                    else:
+                                        st.write(str(val))
+
+                    # Show scraped dynamic outputs if available (from running scrap.py)
+                    try:
+                        scraped = get_company_scrape(plan.get('insurer'))
+                    except Exception:
+                        scraped = None
+
+                    if scraped:
+                        # scraped contains {"static_data":..., "dynamic_data":{...}}
+                        dyn = scraped.get('dynamic_data', {})
+                        if dyn:
+                            with st.expander("Details of Product,Claim & Coverage Insights", expanded=False):
+                                for key, value in dyn.items():
+                                    # value could be a list of dicts or a string
+                                    display_key = key.replace('_', ' ').title()
+                                    if isinstance(value, str):
+                                        st.write(f"**{display_key}:** {value}")
+                                    elif isinstance(value, list):
+                                        # show first found item summary
+                                        if len(value) == 0:
+                                            st.write(f"**{display_key}:** No information found")
+                                        else:
+                                            first = value[0]
+                                            info = first.get('information') if isinstance(first, dict) else str(first)
+                                            src = first.get('source') if isinstance(first, dict) else None
+                                            st.write(f"**{display_key}:** {info}")
+                                            if src:
+                                                st.markdown(f"*Source:* {src}")
+
                     if st.button(f"View Full Details", key=f"btn_{idx}"):
                         st.session_state.selected_plans.append(plan)
                         st.success(f"✅ Added to comparison!")
@@ -598,7 +680,7 @@ if DYNAMIC_SEARCH_AVAILABLE:
         with tab2:
             # Comparison view
             if len(st.session_state.current_search_results) >= 2:
-                st.subheader("⚖️ Compare Plans Side by Side")
+                st.subheader("⚖️ Policy Comparison")
                 
                 selected_plans = st.multiselect(
                     "Select plans to compare (up to 4):",
@@ -612,67 +694,17 @@ if DYNAMIC_SEARCH_AVAILABLE:
                     comparison_data = []
                     for plan in st.session_state.current_search_results:
                         if plan.get('plan_name') in selected_plans:
-                            company_name = plan.get('insurer', '')
-                            company_data = get_company_info(company_name)
-                            
-                            # Calculate company age
-                            company_age = "N/A"
-                            if company_data and company_data.get('founded_year'):
-                                company_age = f"{datetime.now().year - company_data.get('founded_year')} years"
-                            
-                            # Get product types count
-                            product_count = "N/A"
-                            if company_data and company_data.get('product_types'):
-                                product_count = len(company_data.get('product_types', []))
-                            
-                            # Get partners count
-                            partners_count = "N/A"
-                            if company_data and company_data.get('third_party_partners'):
-                                partners_count = len(company_data.get('third_party_partners', []))
-                            
                             comparison_data.append({
                                 "Plan": plan.get('plan_name', 'N/A'),
                                 "Insurer": plan.get('insurer', 'N/A'),
                                 "Monthly": f"${plan.get('annual_premium', 0)/12:.0f}",
                                 "Coverage": f"${plan.get('coverage_amount', 0):,.0f}",
                                 "Rating": f"{plan.get('rating', 0):.1f}⭐",
-                                "Claim Days": plan.get('claim_settlement_days', 0),
-                                "Company Age": company_age,
-                                "Product Types": product_count,
-                                "Partners": partners_count
+                                "Claim Days": plan.get('claim_settlement_days', 0)
                             })
                     
                     df = pd.DataFrame(comparison_data)
                     st.dataframe(df, use_container_width=True, hide_index=True)
-                    
-                    # Display company details for each selected plan
-                    st.markdown("---")
-                    st.subheader("🏢 Company Details Comparison")
-                    comp_cols = st.columns(len(selected_plans))
-                    
-                    for idx, plan_name in enumerate(selected_plans):
-                        plan = next((p for p in st.session_state.current_search_results if p.get('plan_name') == plan_name), None)
-                        if plan:
-                            with comp_cols[idx]:
-                                company_name = plan.get('insurer', '')
-                                company_data = get_company_info(company_name)
-                                if company_data:
-                                    st.markdown(f"**{company_name}**")
-                                    if company_data.get('founded_year'):
-                                        st.caption(f"Founded: {company_data.get('founded_year')}")
-                                    if company_data.get('headquarters'):
-                                        st.caption(f"HQ: {company_data.get('headquarters')}")
-                                    if company_data.get('product_types'):
-                                        st.caption(f"Products: {len(company_data.get('product_types', []))} types")
-                                    if company_data.get('third_party_partners'):
-                                        st.caption(f"Partners: {len(company_data.get('third_party_partners', []))}")
-                                    
-                                    # Coverage quick view
-                                    if company_data.get('standard_coverage'):
-                                        coverage = company_data.get('standard_coverage', {})
-                                        with st.expander("Coverage", expanded=False):
-                                            st.caption(f"✅ {len(coverage.get('covered', []))} covered")
-                                            st.caption(f"❌ {len(coverage.get('not_covered', []))} exclusions")
 
                     # Create comparison charts
                     if len(comparison_data) >= 2:
@@ -717,9 +749,17 @@ if DYNAMIC_SEARCH_AVAILABLE:
             if show_recommendations and st.session_state.current_search_results:
                 st.subheader("🤖 AI-Powered Recommendations")
                 
+                # Show recommendations based on user profile
+                st.info(f"""
+                💡 **Personalized for your profile:**
+                - Budget Preference: {st.session_state.user_profile['budget_preference']}
+                - Coverage Level: {st.session_state.user_profile['coverage_preference']}
+                - Risk Tolerance: {st.session_state.user_profile['risk_tolerance']}
+                """)
+                
                 try:
                     if st.session_state.agents_controller:
-                        with st.spinner("Analyzing plans with AI..."):
+                        with st.spinner("Analyzing plans with AI based on your profile..."):
                             recommendations = st.session_state.agents_controller.search_and_compare(
                                 search_query,
                                 st.session_state.current_search_results
@@ -738,44 +778,21 @@ if DYNAMIC_SEARCH_AVAILABLE:
                 except Exception as e:
                     st.info(f"AI analysis: {str(e)}")
                 
-                # Add company statistics for top plans
-                st.markdown("---")
-                st.subheader("📊 Company Statistics")
-                
-                top_plans = st.session_state.current_search_results[:3]
-                stat_cols = st.columns(len(top_plans))
-                
-                for idx, plan in enumerate(top_plans):
-                    with stat_cols[idx]:
-                        company_name = plan.get('insurer', '')
-                        company_data = get_company_info(company_name)
-                        
-                        st.markdown(f"**{company_name}**")
-                        if company_data:
-                            # Static fields
-                            if company_data.get('founded_year'):
-                                years_old = datetime.now().year - company_data.get('founded_year')
-                                st.metric("Years in Business", years_old)
-                            
-                            if company_data.get('product_types'):
-                                st.metric("Product Types", len(company_data.get('product_types', [])))
-                            
-                            if company_data.get('third_party_partners'):
-                                st.metric("Partners", len(company_data.get('third_party_partners', [])))
-                            
-                            if company_data.get('standard_coverage'):
-                                coverage = company_data.get('standard_coverage', {})
-                                covered = len(coverage.get('covered', []))
-                                not_covered = len(coverage.get('not_covered', []))
-                                st.metric("Coverage Items", f"{covered} covered, {not_covered} exclusions")
-                            
-                            # Dynamic data placeholder (if available)
-                            if "dynamic_data" in st.session_state and company_name in st.session_state.dynamic_data:
-                                dynamic = st.session_state.dynamic_data[company_name]
-                                if dynamic.get('claims_settled_recent'):
-                                    st.caption("📈 Recent claims data available")
-                                if dynamic.get('customers_past_5_years'):
-                                    st.caption("👥 Customer growth data available")
+                # Additional personalized tips
+                with st.expander("💡 Personalized Tips for You"):
+                    if st.session_state.user_profile['budget_preference'] == 'LowPremium':
+                        st.write("💡 You prefer low premiums. Consider higher deductibles to reduce monthly costs.")
+                    elif st.session_state.user_profile['budget_preference'] == 'HighCoverage':
+                        st.write("💡 You prefer comprehensive coverage. Look for plans with higher coverage limits and lower deductibles.")
+                    else:
+                        st.write("💡 You prefer balanced coverage. These plans offer good protection at reasonable premiums.")
+                    
+                    if st.session_state.user_profile['risk_tolerance'] == 'Conservative':
+                        st.write("🛡️ You have conservative risk tolerance. These plans include more comprehensive protections.")
+                    elif st.session_state.user_profile['risk_tolerance'] == 'Aggressive':
+                        st.write("⚡ You have aggressive risk tolerance. Consider plans with lower premiums and higher deductibles.")
+                    
+                    st.write(f"📍 Showing recommendations for: {', '.join(st.session_state.user_profile['preferred_locations'])}")
 
         with tab4:
             # Detailed plan information
@@ -828,154 +845,90 @@ if DYNAMIC_SEARCH_AVAILABLE:
                         # Documents required
                         st.subheader("📋 Documents Needed")
                         docs = selected_plan.get('required_documents', [])
-                        if isinstance(docs, list) and len(docs) > 0:
-                            if isinstance(docs[0], dict):
-                                for doc in docs:
-                                    req_text = "Required" if doc.get('required', False) else "Optional"
-                                    st.markdown(f"• **{doc.get('name', 'Document')}** ({req_text})")
-                                    if doc.get('types'):
-                                        st.caption(f"  Types: {', '.join(doc.get('types', []))}")
-                            else:
-                                for doc in docs:
-                                    st.markdown(f"• {doc}")
-                        
-                        st.markdown("---")
-                        
-                        # Company Information from scrap.py
-                        st.subheader("🏢 Company Information")
-                        company_name = selected_plan.get('insurer', '')
-                        
-                        # Get static company data
-                        company_static_data = get_company_info(company_name)
-                        
-                        if company_static_data:
-                            # Company Name
-                            st.markdown(f"**Company Name:** {company_static_data.get('company_name', company_name)}")
-                            
-                            # Founded Year
-                            if company_static_data.get('founded_year'):
-                                st.markdown(f"**Founded:** {company_static_data.get('founded_year')}")
-                            
-                            # Headquarters
-                            if company_static_data.get('headquarters'):
-                                st.markdown(f"**Headquarters:** {company_static_data.get('headquarters')}")
-                            
-                            # Product Types
-                            if company_static_data.get('product_types'):
-                                st.markdown("**Product Types Offered:**")
-                                product_types_list = company_static_data.get('product_types', [])
-                                for ptype in product_types_list:
-                                    st.markdown(f"• {ptype}")
-                            
-                            st.markdown("---")
-                            
-                            # Standard Coverage - Expandable Sections
-                            if company_static_data.get('standard_coverage'):
-                                coverage = company_static_data.get('standard_coverage', {})
-                                
-                                # What's Covered - Expandable
-                                with st.expander("✅ What's Covered", expanded=False):
-                                    covered_items = coverage.get('covered', [])
-                                    if covered_items:
-                                        for item in covered_items:
-                                            st.markdown(f"✓ {item}")
-                                    else:
-                                        st.info("No coverage information available")
-                                
-                                # What's NOT Covered - Expandable
-                                with st.expander("❌ What's NOT Covered", expanded=False):
-                                    not_covered_items = coverage.get('not_covered', [])
-                                    if not_covered_items:
-                                        for item in not_covered_items:
-                                            st.markdown(f"✗ {item}")
-                                    else:
-                                        st.info("No exclusions information available")
-                            
-                            # Third Party Partners
-                            if company_static_data.get('third_party_partners'):
-                                st.markdown("---")
-                                st.subheader("🤝 Third-Party Partners")
-                                partners = company_static_data.get('third_party_partners', [])
-                                for partner in partners:
-                                    st.markdown(f"• {partner}")
-                        
-                        # Dynamic Data Section (optional, requires Ollama)
-                        st.markdown("---")
-                        st.subheader("📊 Dynamic Company Data (Requires Ollama)")
-                        st.info("This section fetches real-time data about the company's performance, customer base, and market trends.")
-                        
-                        location_input = st.text_input(
-                            "Enter location for dynamic data:",
-                            placeholder="e.g., California, New York, Texas",
-                            key="dynamic_location_input"
-                        )
-                        
-                        col_fetch1, col_fetch2 = st.columns([1, 1])
-                        with col_fetch1:
-                            if st.button("🔄 Fetch All Dynamic Data", key="fetch_dynamic_btn", use_container_width=True):
-                                if location_input:
-                                    with st.spinner("Fetching dynamic data (this may take a while)..."):
-                                        try:
-                                            dynamic_data = st.session_state.scraper_agent.get_company_dynamic_data(
-                                                company_name, 
-                                                location_input
-                                            )
-                                            
-                                            # Store in session state
-                                            if "dynamic_data" not in st.session_state:
-                                                st.session_state.dynamic_data = {}
-                                            st.session_state.dynamic_data[company_name] = dynamic_data
-                                            
-                                            if dynamic_data:
-                                                st.success("✅ Dynamic data fetched successfully!")
-                                        except Exception as e:
-                                            st.warning(f"Could not fetch dynamic data: {str(e)}")
-                                            st.info("Make sure Ollama is running on http://localhost:11434")
+                        for doc in docs:
+                            st.markdown(f"• {doc}")
+
+                        # Additional company metadata (from scrap.py static fields)
+                        try:
+                            scrap_meta = get_scrap_fields_for_company(selected_plan.get('insurer'))
+                        except Exception:
+                            scrap_meta = None
+
+                        if scrap_meta:
+                            st.subheader("🏢 Company Information")
+                            st.markdown(f"**Founded:** {scrap_meta.get('founded_year','N/A')}")
+                            st.markdown(f"**Headquarters:** {scrap_meta.get('headquarters','N/A')}")
+
+                            partners = scrap_meta.get('third_party_partners') or []
+                            if partners:
+                                with st.expander("Third-party partners", expanded=False):
+                                    for p in partners:
+                                        st.write(f"- {p}")
+
+                            std_cov = scrap_meta.get('standard_coverage', {})
+                            if std_cov:
+                                with st.expander("Standard Coverage — Covered", expanded=False):
+                                    for c in std_cov.get('covered', []):
+                                        st.write(f"- {c}")
+                                with st.expander("Standard Coverage — Not Covered", expanded=False):
+                                    for c in std_cov.get('not_covered', []):
+                                        st.write(f"- {c}")
+
+                        # Show scraped dynamic data if present
+                        dyn = scrap_meta.get('dynamic_data') if isinstance(scrap_meta, dict) else None
+                        if dyn:
+                            st.subheader("📈 Latest Scraped Data")
+                            for key, val in dyn.items():
+                                st.markdown(f"**{key.replace('_', ' ').title()}:**")
+                                if isinstance(val, list):
+                                    for item in val:
+                                        if isinstance(item, dict):
+                                            info = item.get('information') or item.get('info') or str(item)
+                                            src = item.get('source')
+                                            if src:
+                                                st.write(f"- {info}  —  [{src}]({src})")
+                                            else:
+                                                st.write(f"- {info}")
+                                        else:
+                                            st.write(f"- {item}")
                                 else:
-                                    st.warning("Please enter a location to fetch dynamic data")
-                        
-                        with col_fetch2:
-                            if st.button("📋 View Cached Data", key="view_cached_btn", use_container_width=True):
-                                if "dynamic_data" in st.session_state and company_name in st.session_state.dynamic_data:
-                                    dynamic_data = st.session_state.dynamic_data[company_name]
-                                else:
-                                    st.info("No cached dynamic data. Please fetch data first.")
-                                    dynamic_data = None
-                        
-                        # Display dynamic data
-                        dynamic_data_to_show = None
-                        if "dynamic_data" in st.session_state and company_name in st.session_state.dynamic_data:
-                            dynamic_data_to_show = st.session_state.dynamic_data[company_name]
-                        
-                        if dynamic_data_to_show:
-                            st.markdown("---")
-                            st.markdown("**Dynamic Data Points:**")
-                            
-                            # Organize dynamic fields
-                            dynamic_fields = {
-                                "claims_settled_recent": "📋 Claims Settled (Recent)",
-                                "customers_past_5_years": "👥 Customers (Past 5 Years)",
-                                "products_sold_location": "📦 Products Sold (Location)",
-                                "active_policyholders_location": "📊 Active Policyholders (Location)",
-                                "coverage_trends_location": "📈 Coverage Trends (Location)",
-                                "recommended_coverage_location": "💡 Recommended Coverage (Location)",
-                                "current_deductibles": "💰 Current Deductibles"
-                            }
-                            
-                            for key, label in dynamic_fields.items():
-                                if key in dynamic_data_to_show:
-                                    with st.expander(label, expanded=False):
-                                        value = dynamic_data_to_show[key]
-                                        if isinstance(value, list):
+                                    st.write(str(val))
+
+                        # Global scrape metadata (scrape_date, location)
+                        try:
+                            meta = get_scrape_metadata()
+                        except Exception:
+                            meta = None
+
+                        if meta:
+                            st.subheader("🕒 Scrape Metadata")
+                            st.markdown(f"**Scrape Date:** {meta.get('scrape_date', 'N/A')}")
+                            st.markdown(f"**Scrape Location:** {meta.get('location', 'N/A')}")
+
+                        # Company-specific dynamic data
+                        try:
+                            scraped = get_company_scrape(selected_plan.get('insurer'))
+                        except Exception:
+                            scraped = None
+
+                        if scraped:
+                            dyn = scraped.get('dynamic_data', {})
+                            if dyn:
+                                st.subheader("🔎 Scraped Insights")
+                                for key, value in dyn.items():
+                                    display_key = key.replace('_', ' ').title()
+                                    with st.expander(display_key, expanded=False):
+                                        if isinstance(value, str):
+                                            st.write(value)
+                                        elif isinstance(value, list) and len(value) > 0:
                                             for item in value:
                                                 if isinstance(item, dict):
-                                                    st.markdown(f"**Information:** {item.get('information', 'N/A')}")
-                                                    if item.get('source'):
-                                                        st.caption(f"Source: {item.get('source', 'N/A')[:80]}...")
+                                                    st.markdown(f"- **Source:** {item.get('source', 'N/A')}")
+                                                    st.write(item.get('information', ''))
                                                 else:
-                                                    st.markdown(f"• {item}")
+                                                    st.write(str(item))
                                         else:
-                                            st.markdown(f"{value}")
+                                            st.write("No scraped information available")
                     
                     with col2:
                         st.markdown("<div class='metric-box'>", unsafe_allow_html=True)
@@ -997,327 +950,30 @@ if DYNAMIC_SEARCH_AVAILABLE:
                                 st.info(f"Quote generation: {str(e)}")
 
 else:
-    # Fallback to basic search using agents when dynamic search is not available
-    st.info("💡 Using basic search mode (dynamic search components not available)")
-    
-    # Basic search interface
-    search_query = st.text_input(
-        "💬 What insurance do you need?",
-        placeholder="e.g., 'Home and pet insurance in California' or 'Best auto insurance for young drivers'",
-        key="basic_search"
-    )
-    
-    search_button = st.button("🔍 Search Plans", use_container_width=True, type="primary")
-    
-    if search_button and search_query:
-        with st.spinner("🔄 Searching for best plans..."):
-            try:
-                # Use basic agents for search
-                intent = extract_intent(search_query)
-                enhanced = enhance_query(intent)
-                plans = fetch_and_score_plans(enhanced)
-                
-                if plans:
-                    st.session_state.current_search_results = plans
-                    st.success(f"✅ Found {len(plans)} insurance plans!")
-                    
-                    # Display results summary with company info
-                    col1, col2, col3, col4, col5 = st.columns(5)
-                    
-                    with col1:
-                        st.markdown(f"<div class='metric-box'><div class='metric-value'>{len(plans)}</div><div class='metric-label'>Plans Found</div></div>", unsafe_allow_html=True)
-                    
-                    with col2:
-                        avg_rating = sum(p.get("rating", 0) for p in plans) / len(plans)
-                        st.markdown(f"<div class='metric-box'><div class='metric-value'>{avg_rating:.1f}</div><div class='metric-label'>Avg Rating</div></div>", unsafe_allow_html=True)
-                    
-                    with col3:
-                        min_premium = min(p.get("annual_premium", 0) for p in plans)
-                        st.markdown(f"<div class='metric-box'><div class='metric-value'>${min_premium/12:.0f}</div><div class='metric-label'>Min Monthly</div></div>", unsafe_allow_html=True)
-                    
-                    with col4:
-                        max_coverage = max(p.get("coverage_amount", 0) for p in plans)
-                        st.markdown(f"<div class='metric-box'><div class='metric-value'>${max_coverage/1000:.0f}K</div><div class='metric-label'>Max Coverage</div></div>", unsafe_allow_html=True)
-                    
-                    with col5:
-                        unique_companies = set(p.get('insurer', '') for p in plans)
-                        st.markdown(f"<div class='metric-box'><div class='metric-value'>{len(unique_companies)}</div><div class='metric-label'>Companies</div></div>", unsafe_allow_html=True)
-                    
-                    # Show company badges
-                    st.markdown("---")
-                    st.markdown("**🏢 Companies in Results:**")
-                    company_cols = st.columns(min(len(unique_companies), 5))
-                    for idx, company_name in enumerate(list(unique_companies)[:5]):
-                        with company_cols[idx]:
-                            company_data = get_company_info(company_name)
-                            if company_data:
-                                st.markdown(f"**{company_name}**")
-                                if company_data.get('founded_year'):
-                                    years_old = datetime.now().year - company_data.get('founded_year')
-                                    st.caption(f"Est. {company_data.get('founded_year')} ({years_old} yrs)")
-                                if company_data.get('product_types'):
-                                    st.caption(f"{len(company_data.get('product_types', []))} product types")
-                            else:
-                                st.markdown(f"**{company_name}**")
-                    
-                    # Display results
-                    st.subheader("📋 Available Plans")
-                    tab1, tab2, tab3, tab4 = st.tabs(["List View", "Comparison", "Recommendations", "Details"])
-                    
-                    # List View
-                    with tab1:
-                        for idx, plan in enumerate(plans[:5]):
-                            with st.expander(
-                                f"{'⭐' if plan.get('rating', 0) >= 4.5 else '📌'} {plan.get('plan_name', 'Unknown Plan')} - {plan.get('insurer', 'Unknown')}",
-                                expanded=(idx == 0)
-                            ):
-                                col1, col2 = st.columns([2, 1])
-                                
-                                with col1:
-                                    st.markdown(f"**Insurer:** {plan.get('insurer', 'N/A')}")
-                                    st.markdown(f"**Type:** {plan.get('product_type', 'N/A')}")
-                                    st.markdown(f"**Coverage:** ${plan.get('coverage_amount', 0):,.0f}")
-                                    st.markdown(f"**Features:** {', '.join(plan.get('features', [])[:3])}")
-                                    
-                                    # Add company static information
-                                    st.markdown("---")
-                                    company_name = plan.get('insurer', '')
-                                    company_data = get_company_info(company_name)
-                                    if company_data:
-                                        st.markdown("**🏢 Company Info:**")
-                                        display_company_static_info(company_data, compact=True)
-                                        
-                                        # Coverage summary
-                                        if company_data.get('standard_coverage'):
-                                            with st.expander("📋 Coverage Summary", expanded=False):
-                                                display_company_coverage_summary(company_data)
-                                
-                                with col2:
-                                    st.markdown(f"**Monthly:** ${plan.get('annual_premium', 0)/12:.0f}")
-                                    st.markdown(f"**Rating:** {plan.get('rating', 0):.1f}⭐")
-                                    
-                                    # Company metrics
-                                    if company_data:
-                                        if company_data.get('founded_year'):
-                                            years_old = datetime.now().year - company_data.get('founded_year')
-                                            st.markdown(f"<div class='metric-box'><div class='metric-value'>{years_old}</div><div class='metric-label'>Years in Business</div></div>", unsafe_allow_html=True)
-                    
-                    # Details tab with company information
-                    with tab4:
-                        if plans:
-                            selected_plan_name = st.selectbox(
-                                "Select a plan for detailed information:",
-                                [p.get('plan_name', 'Unknown') for p in plans],
-                                key="basic_plan_select"
-                            )
-                            
-                            selected_plan = next(
-                                (p for p in plans if p.get('plan_name') == selected_plan_name),
-                                None
-                            )
-                            
-                            if selected_plan:
-                                col1, col2 = st.columns([2, 1])
-                                
-                                with col1:
-                                    st.subheader(f"📄 {selected_plan.get('plan_name', 'Plan Details')}")
-                                    
-                                    detail_col1, detail_col2 = st.columns(2)
-                                    
-                                    with detail_col1:
-                                        st.markdown(f"**Insurance Company:** {selected_plan.get('insurer', 'N/A')}")
-                                        st.markdown(f"**Plan Type:** {selected_plan.get('product_type', 'N/A')}")
-                                        st.markdown(f"**Annual Premium:** ${selected_plan.get('annual_premium', 0):,.0f}")
-                                        st.markdown(f"**Monthly Payment:** ${selected_plan.get('annual_premium', 0)/12:,.0f}")
-                                    
-                                    with detail_col2:
-                                        st.markdown(f"**Coverage Limit:** ${selected_plan.get('coverage_amount', 0):,.0f}")
-                                        st.markdown(f"**Claim Settlement:** {selected_plan.get('claim_settlement_days', 0)} days")
-                                        st.markdown(f"**Customer Rating:** {'⭐' * int(selected_plan.get('rating', 0))} ({selected_plan.get('rating', 0)})")
-                                    
-                                    st.markdown("---")
-                                    
-                                    # Features
-                                    st.subheader("✨ Key Features")
-                                    features = selected_plan.get('features', [])
-                                    feature_col1, feature_col2 = st.columns(2)
-                                    for i, feature in enumerate(features):
-                                        if i % 2 == 0:
-                                            feature_col1.markdown(f"✓ {feature}")
-                                        else:
-                                            feature_col2.markdown(f"✓ {feature}")
-                                    
-                                    # Location availability
-                                    st.subheader("📍 Location Availability")
-                                    st.write(", ".join(selected_plan.get('location_availability', [])))
-                                    
-                                    # Documents required
-                                    st.subheader("📋 Documents Needed")
-                                    docs = selected_plan.get('required_documents', [])
-                                    if isinstance(docs, list) and len(docs) > 0:
-                                        if isinstance(docs[0], dict):
-                                            for doc in docs:
-                                                req_text = "Required" if doc.get('required', False) else "Optional"
-                                                st.markdown(f"• **{doc.get('name', 'Document')}** ({req_text})")
-                                                if doc.get('types'):
-                                                    st.caption(f"  Types: {', '.join(doc.get('types', []))}")
-                                        else:
-                                            for doc in docs:
-                                                st.markdown(f"• {doc}")
-                                    
-                                    st.markdown("---")
-                                    
-                                    # Company Information from scrap.py
-                                    st.subheader("🏢 Company Information")
-                                    company_name = selected_plan.get('insurer', '')
-                                    
-                                    # Get static company data
-                                    company_static_data = get_company_info(company_name)
-                                    
-                                    if company_static_data:
-                                        # Company Name
-                                        st.markdown(f"**Company Name:** {company_static_data.get('company_name', company_name)}")
-                                        
-                                        # Founded Year
-                                        if company_static_data.get('founded_year'):
-                                            st.markdown(f"**Founded:** {company_static_data.get('founded_year')}")
-                                        
-                                        # Headquarters
-                                        if company_static_data.get('headquarters'):
-                                            st.markdown(f"**Headquarters:** {company_static_data.get('headquarters')}")
-                                        
-                                        # Product Types
-                                        if company_static_data.get('product_types'):
-                                            st.markdown("**Product Types Offered:**")
-                                            product_types_list = company_static_data.get('product_types', [])
-                                            for ptype in product_types_list:
-                                                st.markdown(f"• {ptype}")
-                                        
-                                        st.markdown("---")
-                                        
-                                        # Standard Coverage - Expandable Sections
-                                        if company_static_data.get('standard_coverage'):
-                                            coverage = company_static_data.get('standard_coverage', {})
-                                            
-                                            # What's Covered - Expandable
-                                            with st.expander("✅ What's Covered", expanded=False):
-                                                covered_items = coverage.get('covered', [])
-                                                if covered_items:
-                                                    for item in covered_items:
-                                                        st.markdown(f"✓ {item}")
-                                                else:
-                                                    st.info("No coverage information available")
-                                            
-                                            # What's NOT Covered - Expandable
-                                            with st.expander("❌ What's NOT Covered", expanded=False):
-                                                not_covered_items = coverage.get('not_covered', [])
-                                                if not_covered_items:
-                                                    for item in not_covered_items:
-                                                        st.markdown(f"✗ {item}")
-                                                else:
-                                                    st.info("No exclusions information available")
-                                        
-                                        # Third Party Partners
-                                        if company_static_data.get('third_party_partners'):
-                                            st.markdown("---")
-                                            st.subheader("🤝 Third-Party Partners")
-                                            partners = company_static_data.get('third_party_partners', [])
-                                            for partner in partners:
-                                                st.markdown(f"• {partner}")
-                                    
-                                    # Dynamic Data Section (optional, requires Ollama)
-                                    st.markdown("---")
-                                    st.subheader("📊 Dynamic Company Data (Requires Ollama)")
-                                    st.info("This section fetches real-time data about the company's performance, customer base, and market trends.")
-                                    
-                                    location_input = st.text_input(
-                                        "Enter location for dynamic data:",
-                                        placeholder="e.g., California, New York, Texas",
-                                        key="dynamic_location_input_basic"
-                                    )
-                                    
-                                    col_fetch1, col_fetch2 = st.columns([1, 1])
-                                    with col_fetch1:
-                                        if st.button("🔄 Fetch All Dynamic Data", key="fetch_dynamic_btn_basic", use_container_width=True):
-                                            if location_input:
-                                                with st.spinner("Fetching dynamic data (this may take a while)..."):
-                                                    try:
-                                                        dynamic_data = st.session_state.scraper_agent.get_company_dynamic_data(
-                                                            company_name, 
-                                                            location_input
-                                                        )
-                                                        
-                                                        # Store in session state
-                                                        if "dynamic_data" not in st.session_state:
-                                                            st.session_state.dynamic_data = {}
-                                                        st.session_state.dynamic_data[company_name] = dynamic_data
-                                                        
-                                                        if dynamic_data:
-                                                            st.success("✅ Dynamic data fetched successfully!")
-                                                    except Exception as e:
-                                                        st.warning(f"Could not fetch dynamic data: {str(e)}")
-                                                        st.info("Make sure Ollama is running on http://localhost:11434")
-                                            else:
-                                                st.warning("Please enter a location to fetch dynamic data")
-                                    
-                                    with col_fetch2:
-                                        if st.button("📋 View Cached Data", key="view_cached_btn_basic", use_container_width=True):
-                                            if "dynamic_data" in st.session_state and company_name in st.session_state.dynamic_data:
-                                                dynamic_data = st.session_state.dynamic_data[company_name]
-                                            else:
-                                                st.info("No cached dynamic data. Please fetch data first.")
-                                                dynamic_data = None
-                                    
-                                    # Display dynamic data
-                                    dynamic_data_to_show = None
-                                    if "dynamic_data" in st.session_state and company_name in st.session_state.dynamic_data:
-                                        dynamic_data_to_show = st.session_state.dynamic_data[company_name]
-                                    
-                                    if dynamic_data_to_show:
-                                        st.markdown("---")
-                                        st.markdown("**Dynamic Data Points:**")
-                                        
-                                        # Organize dynamic fields
-                                        dynamic_fields = {
-                                            "claims_settled_recent": "📋 Claims Settled (Recent)",
-                                            "customers_past_5_years": "👥 Customers (Past 5 Years)",
-                                            "products_sold_location": "📦 Products Sold (Location)",
-                                            "active_policyholders_location": "📊 Active Policyholders (Location)",
-                                            "coverage_trends_location": "📈 Coverage Trends (Location)",
-                                            "recommended_coverage_location": "💡 Recommended Coverage (Location)",
-                                            "current_deductibles": "💰 Current Deductibles"
-                                        }
-                                        
-                                        for key, label in dynamic_fields.items():
-                                            if key in dynamic_data_to_show:
-                                                with st.expander(label, expanded=False):
-                                                    value = dynamic_data_to_show[key]
-                                                    if isinstance(value, list):
-                                                        for item in value:
-                                                            if isinstance(item, dict):
-                                                                st.markdown(f"**Information:** {item.get('information', 'N/A')}")
-                                                                if item.get('source'):
-                                                                    st.caption(f"Source: {item.get('source', 'N/A')[:80]}...")
-                                                            else:
-                                                                st.markdown(f"• {item}")
-                                                    else:
-                                                        st.markdown(f"{value}")
-                                
-                                with col2:
-                                    st.markdown("<div class='metric-box'>", unsafe_allow_html=True)
-                                    st.markdown(f"<div class='metric-value'>${selected_plan.get('annual_premium', 0)/12:.0f}</div>", unsafe_allow_html=True)
-                                    st.markdown("<div class='metric-label'>Monthly Cost</div>", unsafe_allow_html=True)
-                                    st.markdown("</div>", unsafe_allow_html=True)
-                else:
-                    st.warning("No plans found. Try different search terms.")
-                    
-            except Exception as e:
-                st.error(f"Search error: {str(e)}")
-                import traceback
-                st.code(traceback.format_exc())
+    st.error("⚠️ Dynamic search system not available")
+    st.info("Ensure all packages are installed: pip install -r requirements.txt")
 
 # ====== SIDEBAR ======
 with st.sidebar:
+    st.markdown("---")
+    
+    # User profile summary in sidebar
+    st.subheader("👤 Your Profile")
+    profile_info = f"""
+    **Name:** {st.session_state.user_profile['name']}
+    
+    **Preferences:**
+    - 💰 Budget: {st.session_state.user_profile['budget_preference']}
+    - 🛡️ Coverage: {st.session_state.user_profile['coverage_preference']}
+    - ⚠️ Risk: {st.session_state.user_profile['risk_tolerance']}
+    - 📍 Locations: {', '.join(st.session_state.user_profile['preferred_locations'][:2])}
+    """
+    st.markdown(profile_info)
+    
+    if st.button("✏️ Edit Profile", use_container_width=True):
+        st.session_state.show_profile_editor = True
+        st.rerun()
+    
     st.markdown("---")
     st.subheader("📊 Search Statistics")
     

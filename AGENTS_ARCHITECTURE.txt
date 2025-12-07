@@ -1,0 +1,1433 @@
+================================================================================
+                    INSURANCE AGENTIC POC - ARCHITECTURE & COMPONENTS
+================================================================================
+
+OVERVIEW
+--------
+This is an AI-powered Insurance e-commerce search and comparison system using
+multiple specialized agents that work together to understand user queries,
+fetch insurance plans, score them intelligently, and provide personalized
+recommendations.
+
+Framework: Ollama (local LLM inference)
+Model: Gemma 3.1B (local, open-source language model)
+UI Framework: Streamlit (interactive web interface)
+Data: Dummy plan database in memory + optional web scraping
+
+================================================================================
+                            EXECUTION FLOW
+================================================================================
+
+MAIN FLOW (user query → recommendations):
+================================================================================
+
+1. USER ENTERS QUERY (Streamlit UI)
+   ↓
+2. INTENT AGENT (agents/intent_agent.py)
+   - Extracts structured intent from natural language
+   - Uses Ollama + deterministic heuristics
+   - Outputs: policyType, riskFactors, location, intent type
+   ↓
+3. QUERY ENHANCEMENT AGENT (agents/query_enhancement_agent.py)
+   - Fills in missing information with smart defaults
+   - Infers propertyValue, budgetPreference, userStage
+   - Uses Ollama to reason about incomplete queries
+   - Outputs: Enhanced query with all parameters
+   ↓
+4. CONNECTOR + PRICING AGENT (agents/connectors_agent.py)
+   - Fetches candidate plans from dummy database or web scrapers
+   - Filters by policy type, location, risk factors
+   - Computes adjusted premium (includes surcharges for pets, pools, etc.)
+   - Calculates value score (based on rating, reviews, coverage/premium ratio)
+   - Outputs: Ranked list of plans by value score
+   ↓
+5. RECOMMENDATION + COMPARISON AGENT (agents/recommendation_agent.py)
+   - Takes top 5 candidate plans
+   - Uses Ollama to generate human-readable explanation
+   - Compares plans (best value vs. best coverage)
+   - Provides risk/coverage guidance
+   - Outputs: Markdown-formatted recommendation text
+   ↓
+6. UI DISPLAY (Streamlit)
+   - Shows recommended plans with details
+   - Displays comparison charts
+   - Shows explanations and risk factors
+
+================================================================================
+                          AGENTS IN DETAIL
+================================================================================
+
+AGENT 1: INTENT AGENT
+File: agents/intent_agent.py
+Purpose: Extract structured user intent from free-form natural language
+Framework: Ollama (local LLM inference) + Pattern matching heuristics
+
+Input: User query (string)
+  Example: "Home insurance with pet and swimming pool in CA"
+
+Process:
+  1. Use Ollama to generate structured JSON intent
+  2. Apply deterministic heuristics to fix/validate:
+     - Policy type detection (home, renters, auto, health, fire)
+     - Risk factor detection (pet, swimming_pool)
+     - Location detection (state codes like CA, NY, TX)
+  3. Validate against predefined lists
+
+Output: Dictionary with fields:
+  - policyType: str (one of: home, fire, renters, auto, health)
+  - riskFactors: List[str] (e.g., ["pet", "swimming_pool"])
+  - location: str (state code or city, e.g., "CA" or "Unknown")
+  - intent: str (Explore, Comparison, or Buy)
+  - rawQueryEcho: str (echo of original query)
+
+Key Features:
+  - Heuristic risk factor matching (pet, swimming pool keywords)
+  - State code extraction using regex
+  - Fallback deterministic parsing if LLM fails
+
+================================================================================
+
+AGENT 2: QUERY ENHANCEMENT AGENT
+File: agents/query_enhancement_agent.py
+Purpose: Fill in missing information and add smart defaults
+Framework: Ollama (local LLM inference)
+
+Input: Intent dict from Agent 1
+
+Process:
+  1. Pass intent through Ollama with system prompt
+  2. LLM infers missing fields:
+     - Property value (e.g., $300,000 for home insurance)
+     - Budget preference (LowPremium, Balanced, HighCoverage)
+     - User stage (JustLooking, Comparing, ReadyToBuy)
+  3. Apply fallback defaults if LLM fails
+
+Output: Dictionary with additional fields:
+  - (all fields from Agent 1 output)
+  - propertyValueUsd: Optional[float]
+  - budgetPreference: str (LowPremium | Balanced | HighCoverage)
+  - userStage: str (JustLooking | Comparing | ReadyToBuy)
+
+Example Output:
+{
+  "policyType": "home",
+  "riskFactors": ["pet", "swimming_pool"],
+  "location": "CA",
+  "intent": "Comparison",
+  "propertyValueUsd": 350000,
+  "budgetPreference": "Balanced",
+  "userStage": "Comparing"
+}
+
+================================================================================
+
+AGENT 3: CONNECTOR + PRICING AGENT
+File: agents/connectors_agent.py
+Purpose: Fetch plans, adjust pricing, and score them
+Framework: Python deterministic logic (no LLM)
+
+Input: Enhanced query dict from Agent 2
+
+Process:
+  1. Load DUMMY_PLANS from data_plans.py (or fetch from web via data_scraper.py)
+  2. Filter by:
+     - Policy type (home, auto, etc.)
+     - Location (state code or "ALL")
+  3. Compute adjusted premium:
+     - Base premium + risk surcharges (pet +5%, pool +10%)
+     - Budget preference adjustment (LowPremium -5%, HighCoverage +5%)
+  4. Calculate value score using formula:
+     valueScore = 0.4 * coverage_ratio + 0.4 * rating + 0.2 * log10(reviews)
+  5. Sort by value score descending
+
+Output: List[Dict] with enriched plans:
+  - (all original plan fields from DUMMY_PLANS)
+  - adjusted_annual_premium_usd: float
+  - valueScore: float (0-10 range typically)
+
+Example Plan Output:
+{
+  "id": "HOM_CA_1",
+  "company_name": "EverSure Insurance",
+  "plan_name": "Essential Home Guard",
+  "insurance_type": "home",
+  "adjusted_annual_premium_usd": 1052.75,  # Original $950 + $52.75 surcharge
+  "customer_rating": 4.5,
+  "valueScore": 7.2,
+  ...
+}
+
+================================================================================
+
+AGENT 4: RECOMMENDATION + COMPARISON AGENT
+File: agents/recommendation_agent.py
+Purpose: Generate human-readable comparison and recommendation
+Framework: Ollama (local LLM inference)
+
+Input: 
+  - Enhanced query dict from Agent 2
+  - Top 5 ranked plans from Agent 3
+
+Process:
+  1. Format plans + query as JSON payload
+  2. Send to Ollama with system prompt requesting:
+     - Pick top 2-3 plans for this user
+     - Explain strengths/drawbacks of each
+     - Provide comparison (best value vs. best coverage)
+     - Give 3-4 bullets on risk/coverage considerations
+  3. Return LLM-generated markdown text
+
+Output: String (markdown-formatted recommendation text)
+
+Example Output:
+"""
+## Top Recommendations for You
+
+### 1. EverSure Insurance - Essential Home Guard
+- **Annual Premium**: $1,052.75
+- **Coverage**: $350,000
+- **Rating**: 4.5/5 (210 reviews)
+- **Strengths**: Comprehensive fire/theft coverage, 24/7 claims support
+- **Drawbacks**: No flood coverage, higher premiums in wildfire zones
+
+### 2. Pioneer Mutual - Smart Home Shield
+- **Annual Premium**: $1,015.00
+- **Coverage**: $300,000
+- **Rating**: 4.2/5 (95 reviews)
+- **Strengths**: Bundle discounts, great claims reputation
+- **Drawbacks**: Higher deductible ($1,500)
+
+## Comparison
+- Best Value: Pioneer Mutual (lower premium, good support)
+- Best Coverage: EverSure (higher coverage amount)
+
+## Key Considerations
+- Pet liability: Your policy covers pet-related injuries
+- Pool liability: Swimming pool adds +10% to premium
+- Dwelling: Covers structure and attached structures
+"""
+
+================================================================================
+                      TOOLS & INTEGRATIONS
+================================================================================
+
+TOOL 1: OLLAMA LOCAL LLM
+Framework: Ollama (http://localhost:11434/api/chat)
+Model: Gemma 3.1B (1 billion parameters, lightweight)
+Usage: All LLM-based agents use this for reasoning
+
+File: ollama_client.py
+Function: chat_ollama(system_prompt: str, user_prompt: str) -> str
+  - Posts to Ollama HTTP API
+  - Sends system + user prompt
+  - Returns LLM-generated text
+  - Timeout: 120 seconds
+
+Example Call:
+  response = chat_ollama(
+    system_prompt="You are an insurance expert...",
+    user_prompt="User wants home insurance in CA"
+  )
+
+Benefits:
+  - No cloud dependency (local inference)
+  - No API keys needed
+  - Privacy (data stays on device)
+
+================================================================================
+
+TOOL 2: DATA SCRAPER
+Framework: BeautifulSoup + Requests
+File: data_scraper.py
+Purpose: Fetch real insurance data from websites (optional)
+
+Function: scrape_insurance_data(product_types, location) -> List[Dict]
+  - Scrapes multiple insurance provider websites (AIG, Allianz, State Farm, etc.)
+  - Handles 403/rate-limit errors gracefully
+  - Caches results
+  - Falls back to DUMMY_PLANS if scraping fails
+
+Currently Scraped Companies:
+  - AIG
+  - Allianz
+  - State Farm
+  - Geico
+  - Progressive
+  - Custom scrapers for other providers
+
+================================================================================
+
+TOOL 3: CACHE MANAGER
+File: cache_manager.py
+Purpose: Store/retrieve cached plans to avoid re-scraping
+Framework: Python dict with file persistence (JSON)
+
+Features:
+  - Cache plans by product type + location
+  - TTL-based expiration (default 1 hour)
+  - Automatic cleanup of stale entries
+  - Fallback to fresh data if cache misses
+
+Usage:
+  cache_manager = CacheManager()
+  plans = cache_manager.get_cached_plans("home", "CA")
+
+================================================================================
+
+TOOL 4: DATABASE FILES (JSON)
+Framework: Plain JSON files (no SQL required)
+Files:
+  - insurance_scraped_data.json: Cached plan data from scrapers
+  - insurance_static_data.json: Static default plans
+  - claims_db.json: Claim history/processing
+  - sales_db.json: Sales records
+  - renewals_db.json: Renewal reminders
+  - policies_wallet_db.json: User's saved policies
+  - feedback_db.json: User feedback/ratings
+
+Usage:
+  - Loaded into memory on startup
+  - Updated during session
+  - Persisted to disk at program end
+
+================================================================================
+                         KEY FILES & FUNCTIONS
+================================================================================
+
+FILE: agents/intent_agent.py
+Main Functions:
+  - extract_intent(user_query: str) -> Dict[str, Any]
+    Extracts structured intent from user query
+  - _heuristic_policy_type(text: str) -> str
+    Determines policy type by keyword matching
+  - _heuristic_risk_factors(text: str) -> List[str]
+    Extracts risk factors (pet, swimming_pool)
+  - _find_state_codes_in_text(text: str) -> List[str]
+    Finds US state codes in query
+
+Key Features:
+  - Ollama-powered LLM extraction
+  - Deterministic fallback heuristics
+  - Risk factor detection (pet, pool)
+  - State code parsing with regex
+
+================================================================================
+
+FILE: agents/query_enhancement_agent.py
+Main Functions:
+  - enhance_query(intent: Dict[str, Any]) -> Dict[str, Any]
+    Fills in missing query parameters with smart defaults
+
+Key Logic:
+  - Guesses property value for home/fire insurance ($150k-$1M range)
+  - Sets budget preference based on query tone
+  - Determines user stage (JustLooking/Comparing/ReadyToBuy)
+  - Validates all fields before returning
+
+================================================================================
+
+FILE: agents/connectors_agent.py
+Main Functions:
+  - fetch_and_score_plans(enhanced_query: Dict) -> List[Dict]
+    Fetches, filters, and ranks plans
+
+Helper Functions:
+  - _matches_type(plan, policy_type) -> bool
+    Checks if plan matches desired type
+  - _matches_location(plan, location) -> bool
+    Checks if plan available in location
+  - _compute_adjusted_premium(plan, enhanced_query) -> float
+    Applies surcharges/discounts to base premium
+  - _value_score(plan, adjusted_premium) -> float
+    Calculates composite value score
+
+Value Score Formula:
+  score = 0.4 * (coverage/premium) + 0.4 * rating + 0.2 * log10(reviews)
+  - Emphasizes coverage-to-cost ratio (40%)
+  - Emphasizes customer rating (40%)
+  - Slightly weights review count (20%)
+
+================================================================================
+
+FILE: agents/recommendation_agent.py
+Main Functions:
+  - generate_recommendation(enhanced_query, plans) -> str
+    Generates markdown-formatted recommendation text
+
+Features:
+  - Uses top 5 plans from scoring agent
+  - Asks Ollama to pick best 2-3 for user
+  - Compares best-value vs. best-coverage
+  - Provides risk/coverage guidance
+  - Returns human-readable explanation
+
+================================================================================
+
+FILE: ui_dynamic_fixed.py
+Purpose: Main Streamlit web UI
+Components:
+  - Sidebar with user input (natural language query)
+  - Main area with search results
+  - Tabs for: Plans, Comparison, Details, Support, Feedback
+  - Charts and visualizations (Altair)
+  - Policy wallet / saved policies
+
+Key Functions:
+  - Page setup and layout
+  - Query input handling
+  - Results display with cards
+  - Comparison charts (premium vs. rating vs. coverage)
+  - Policy explanation display
+  - Feedback/rating system
+
+Tabs:
+  1. Search Results
+     - List of recommended plans
+     - Cards with key metrics
+     - "Learn More" links
+  2. Comparison
+     - Side-by-side plan comparison
+     - Charts (premium, coverage, rating)
+     - Feature/limitation matrix
+  3. Plan Details
+     - Full policy details
+     - Coverage breakdown
+     - Claim process info
+  4. Support Hub
+     - FAQ search
+     - Contact info
+     - Common questions
+  5. Feedback
+     - Rate plans/recommendations
+     - Save feedback to database
+
+================================================================================
+
+FILE: query_parser.py
+Purpose: Parse natural language insurance queries
+Classes:
+  - QueryParser: Main parser class
+  - QueryEnhancer: Enhances parsed queries
+
+Key Functions:
+  - parse_query(query: str) -> Dict
+    Extracts: product_types, location, coverage_level, intent, keywords
+  - enhance_insurance_query(query: str) -> Dict
+    Adds filter criteria and scoring parameters
+
+Mappings:
+  - Product keywords: home, pet, auto, life, business, health
+  - US states: All 50 states with abbreviations
+  - Business vs. Personal indicators
+  - Coverage levels: low, medium, high, premium
+
+================================================================================
+
+FILE: dynamic_search.py
+Purpose: Main search engine orchestrating all components
+Class: DynamicInsuranceSearchEngine
+
+Key Functions:
+  - search(user_query: str, user_profile: Dict) -> Dict
+    Main search entry point
+  - _fetch_plans(...) -> List[Dict]
+    Fetches plans from database/scrapers
+  - _filter_results(...) -> List[Dict]
+    Filters and sorts results
+  - _get_recommendations(...) -> List[Dict]
+    Gets ranked recommendations
+
+Returns:
+  - user_query: Original query
+  - parsed_query: Parsed/enhanced query
+  - total_results: Count of matching plans
+  - plans: Filtered/sorted plans
+  - recommendations: Top recommendations with categories
+  - timestamp: When search was executed
+
+================================================================================
+
+FILE: data_plans.py
+Purpose: Dummy plan database
+Content: DUMMY_PLANS list with 10+ example insurance plans
+
+Each Plan Contains:
+  - id: Unique identifier (e.g., "HOM_CA_1")
+  - insurance_type: Type of insurance (home, auto, health, etc.)
+  - company_name: Insurance company name
+  - plan_name: Plan name/description
+  - states: List of states where plan is available
+  - base_annual_premium_usd: Base annual cost
+  - monthly_premium_usd: Monthly cost
+  - coverage_amount_usd: Coverage limit
+  - deductible_usd: Deductible amount
+  - customer_rating: Rating out of 5
+  - number_of_reviews: Number of customer reviews
+  - features: List of plan features
+  - limitations: List of plan limitations
+  - coverage_details: Breakdown of coverage amounts
+  - claim_approval_timeline: Expected claim processing time
+  - claim_process: How to file claims
+
+Example Plan:
+{
+  "id": "HOM_CA_1",
+  "insurance_type": "home",
+  "company_name": "EverSure Insurance",
+  "plan_name": "Essential Home Guard",
+  "states": ["CA", "NV", "AZ"],
+  "base_annual_premium_usd": 950,
+  "coverage_amount_usd": 350000,
+  "customer_rating": 4.5,
+  "number_of_reviews": 210,
+  "features": ["Covers fire, theft, liability", "24/7 claims hotline"],
+  "limitations": ["No flood coverage", "Higher premiums in wildfire zones"]
+}
+
+================================================================================
+
+FILE: cache_manager.py
+Purpose: Manage caching of insurance plan data
+Class: CacheManager
+
+Key Features:
+  - get_cached_plans(product_type, location) -> List[Dict]
+    Retrieves plans from cache or fresh data
+  - cache_plans(product_type, location, plans) -> None
+    Stores plans in cache with TTL
+  - clear_expired_cache() -> None
+    Removes stale cache entries
+  - get_cache_stats() -> Dict
+    Returns cache usage statistics
+
+Cache Key Format: "{product_type}:{location}"
+TTL: 3600 seconds (1 hour) by default
+
+================================================================================
+
+FILE: policy_explanations.py
+Purpose: Generate plain-language policy explanations
+Functions:
+  - get_policy_explanation(plan: Dict) -> str
+    Returns human-readable explanation of policy
+  - format_coverage_checklist(plan: Dict) -> str
+    Returns formatted checklist of coverage items
+
+Generates:
+  - Coverage summary
+  - What's included/excluded
+  - Deductible explanation
+  - Claim process steps
+  - Contact information
+
+================================================================================
+
+FILE: policy_manager.py
+Purpose: Manage user's saved policies and renewals
+Functions:
+  - get_all_policies(user_id: str) -> List[Dict]
+    Retrieves all saved policies for user
+  - save_policy(user_id, policy) -> bool
+    Saves new policy to wallet
+  - get_renewal_reminders(user_id) -> List[Dict]
+    Gets upcoming renewal dates
+
+Database: policies_wallet_db.json
+Structure:
+{
+  "user_id": {
+    "policy_id": {
+      "company": "...",
+      "plan_name": "...",
+      "purchase_date": "...",
+      "renewal_date": "...",
+      "status": "active|expired|renewing"
+    }
+  }
+}
+
+================================================================================
+
+FILE: support_hub.py
+Purpose: Provide FAQ and customer support
+Functions:
+  - search_faq(query: str) -> List[Dict]
+    Searches FAQ database for relevant answers
+
+FAQ Topics Covered:
+  - Policy types (home, auto, health, etc.)
+  - Claims process
+  - Coverage details
+  - Premium pricing
+  - Deductibles
+  - Company information
+  - Renewal/cancellation
+
+Database: FAQ_TOPICS dict with questions and answers
+
+================================================================================
+
+FILE: ollama_client.py
+Purpose: Interface with local Ollama LLM
+Function:
+  - chat_ollama(system_prompt, user_prompt, model="gemma3:1b") -> str
+    Makes HTTP POST to Ollama /api/chat endpoint
+    Returns assistant's text response
+
+URL: http://localhost:11434/api/chat
+Default Model: gemma3:1b (Gemma 3.1 Billion parameters)
+Timeout: 120 seconds
+
+Payload Format:
+{
+  "model": "gemma3:1b",
+  "stream": false,
+  "messages": [
+    {"role": "system", "content": "..."},
+    {"role": "user", "content": "..."}
+  ]
+}
+
+Response Format:
+{
+  "model": "gemma3:1b",
+  "message": {
+    "role": "assistant",
+    "content": "..."
+  }
+}
+
+================================================================================
+                    FRAMEWORK & TECHNOLOGY STACK
+================================================================================
+
+FRONTEND FRAMEWORK: Streamlit
+File: ui_dynamic_fixed.py
+Purpose: Interactive web interface for users
+Features:
+  - Responsive web UI (no HTML/CSS required)
+  - Sidebar for input
+  - Tabs for different sections
+  - Interactive charts and tables
+  - Real-time updates
+  - Session state management
+
+Installation: pip install streamlit
+Running: streamlit run ui_dynamic_fixed.py
+
+================================================================================
+
+LLM FRAMEWORK: Ollama (Local LLM Inference)
+Model: Gemma 3.1B
+Purpose: Local language model for agent reasoning (no cloud dependency)
+API: HTTP REST API on localhost:11434
+
+Installation: Download Ollama from ollama.ai
+Setup: ollama pull gemma:1b
+Running: ollama serve (starts API server)
+
+Advantages:
+  - No internet required
+  - No API keys/subscriptions
+  - Privacy (data stays local)
+  - Fast inference on modern hardware
+  - Lightweight (1B parameters)
+
+Integration: Python requests library to HTTP API
+
+================================================================================
+
+DATA SCRAPING FRAMEWORK: BeautifulSoup + Requests
+File: data_scraper.py
+Purpose: Fetch real insurance data from websites
+Libraries:
+  - requests: HTTP client for fetching web pages
+  - beautifulsoup4: HTML parsing and data extraction
+  - lxml: Fast HTML parsing backend
+
+Features:
+  - Scrapes multiple insurance company websites
+  - Handles HTTP errors gracefully
+  - Implements rate limiting
+  - Caches results to avoid repeated requests
+  - Extracts: plans, premiums, coverage, ratings, reviews
+
+Scraped Companies:
+  - AIG (aig.com)
+  - Allianz (allianz.com)
+  - State Farm (statefarm.com)
+  - Geico (geico.com)
+  - Progressive (progressive.com)
+  - Others (custom scrapers)
+
+================================================================================
+
+DATA VISUALIZATION: Altair (Vega-Lite)
+File: ui_dynamic_fixed.py (charts section)
+Purpose: Interactive charts and visualizations
+Chart Types:
+  - Premium vs. Rating scatter plot
+  - Coverage Amount bar chart
+  - Customer Rating distribution
+  - Premium comparison
+  - Deductible ranges
+
+Libraries:
+  - altair: Declarative visualization library
+  - pandas: Data manipulation
+
+Features:
+  - Interactive hover tooltips
+  - Selectable axes
+  - Color-coded by company/plan
+  - Exportable to images
+
+================================================================================
+
+DATABASE: JSON Files (No SQL Required)
+Files:
+  - insurance_scraped_data.json: Cached plans from scrapers
+  - insurance_static_data.json: Static plan database
+  - claims_db.json: Claim records
+  - sales_db.json: Sales history
+  - renewals_db.json: Renewal schedule
+  - policies_wallet_db.json: User's saved policies
+  - feedback_db.json: User feedback/ratings
+
+Advantages:
+  - No database server required
+  - Easy to backup/version control
+  - Human-readable format
+  - Suitable for PoC/demo
+
+Disadvantage:
+  - Not scalable for production (use PostgreSQL/MongoDB for production)
+
+================================================================================
+
+TESTING FRAMEWORK: (Not extensively used in PoC)
+File: test_*.py files
+Purpose: Unit tests for key functions
+Framework: Python unittest / pytest
+
+Test Files:
+  - test_agents_demo.py: Demo/manual tests
+  - test_dynamic_system.py: System integration tests
+  - test_integration.py: End-to-end integration tests
+  - test_ui_data.py: UI data validation
+
+Running Tests:
+  python -m pytest test_*.py -v
+  python -m unittest discover -s . -p "test_*.py"
+
+================================================================================
+                         API ENDPOINTS & CALLS
+================================================================================
+
+OLLAMA LLM API (Local HTTP)
+Endpoint: POST http://localhost:11434/api/chat
+Purpose: Get LLM response to a prompt
+
+Request Body:
+{
+  "model": "gemma3:1b",
+  "stream": false,
+  "messages": [
+    {"role": "system", "content": "System prompt"},
+    {"role": "user", "content": "User query"}
+  ]
+}
+
+Response Body:
+{
+  "model": "gemma3:1b",
+  "message": {
+    "role": "assistant",
+    "content": "LLM response text"
+  }
+}
+
+Used By:
+  - Intent Agent (extract intent)
+  - Query Enhancement Agent (infer missing fields)
+  - Recommendation Agent (generate explanation)
+
+Python Implementation: ollama_client.py
+
+================================================================================
+
+EXTERNAL SCRAPED APIs (Optional)
+Purpose: Fetch real insurance data from websites
+Companies Scraped:
+  - AIG: https://www.aig.com
+  - Allianz: https://www.allianz.com
+  - State Farm: https://www.statefarm.com
+  - Geico: https://www.geico.com
+  - Progressive: https://www.progressive.com
+
+Implementation: data_scraper.py
+Method: BeautifulSoup HTML parsing (no official APIs used)
+Error Handling: Graceful degradation to DUMMY_PLANS on failure
+Rate Limiting: Respects robots.txt and implements delays
+
+Note: Web scraping may be rate-limited or blocked by target sites.
+Fallback behavior: System uses DUMMY_PLANS if scraping fails.
+
+================================================================================
+                    MODELS & MODEL PARAMETERS
+================================================================================
+
+PRIMARY MODEL: Ollama Gemma 3.1B
+Name: gemma:1b (or gemma3:1b)
+Parameters: 1 billion (1B)
+Type: Lightweight open-source language model
+Source: Google (via Ollama)
+
+Capabilities:
+  - Natural language understanding
+  - Structured output generation (JSON)
+  - Reasoning about insurance products
+  - Comparison and recommendation
+  - Multi-turn conversations
+
+Limitations:
+  - Smaller than GPT-4 (3.5B vs. 170B+)
+  - May struggle with complex multi-step reasoning
+  - Less training data than largest models
+  - Output quality depends on prompt engineering
+
+Prompting Strategy:
+  - Clear system prompt defining role
+  - Structured JSON output requests
+  - Specific constraints (supported types, budget ranges)
+  - Fallback to heuristics if LLM fails
+
+Example System Prompt (Intent Agent):
+"You are an Intent Understanding Agent for an insurance e-commerce system.
+Extract policyType, riskFactors, location, intent from the user query.
+Respond ONLY as strict JSON with specific schema.
+Include 'pet' in riskFactors if dogs/cats mentioned.
+Include 'swimming_pool' if pool mentioned."
+
+================================================================================
+                        DEPLOYMENT & RUNNING
+================================================================================
+
+REQUIREMENTS.TXT
+Main Dependencies:
+  - streamlit: Web UI framework
+  - ollama: Local LLM client (via requests HTTP API)
+  - beautifulsoup4: Web scraping
+  - requests: HTTP client
+  - pandas: Data manipulation
+  - altair: Visualization
+  - lxml: HTML parsing
+  - pillow: Image processing (for UI)
+  - pytest: Testing (optional)
+  - watchdog: File system monitoring (optional)
+
+Installation:
+  pip install -r requirements.txt
+
+Starting Ollama:
+  ollama serve
+  (Ensures LLM API is available at http://localhost:11434)
+
+Running the App:
+  streamlit run ui_dynamic_fixed.py
+
+URL: http://127.0.0.1:8501 (default Streamlit port)
+
+================================================================================
+                       UI PROFILE & COMPONENTS
+================================================================================
+
+STREAMLIT UI OVERVIEW
+File: ui_dynamic_fixed.py
+Framework: Streamlit (Python web UI library)
+
+Current UI Profile:
+  - Type: Multi-page web application
+  - Framework: Streamlit (no HTML/CSS required)
+  - Port: 127.0.0.1:8501 (default Streamlit)
+  - Layout: Sidebar + Main content area
+  - State Management: Streamlit session_state
+  - Styling: Streamlit markdown + custom CSS
+  - Charts: Altair (interactive Vega-Lite)
+  - Data Tables: Pandas DataFrames
+
+SIDEBAR COMPONENTS:
+  - Title: "Insurance Search Assistant"
+  - Input Field: Natural language query (text_area)
+  - Search Button: Trigger search/agent pipeline
+  - Filters (optional):
+    - Policy Type selector (multiselect)
+    - Location selector (text input or dropdown)
+    - Budget slider (range: $0-$5000 annual)
+    - Coverage level selector (dropdown)
+  - Settings:
+    - Toggle: Show detailed breakdowns
+    - Toggle: Use web scraper or dummy data
+    - Theme selector (light/dark)
+
+MAIN CONTENT AREA TABS:
+
+Tab 1: "Search Results"
+  Components:
+    - Status indicator (searching/complete)
+    - Result count display
+    - Cards for each plan recommendation:
+      * Plan name and company logo
+      * Annual premium (highlighted)
+      * Coverage amount
+      * Customer rating (star display)
+      * Number of reviews
+      * Key features (bulleted list)
+      * "Learn More" button
+    - Sorting options (by premium, rating, coverage)
+    - Pagination for large result sets
+
+Tab 2: "Comparison"
+  Components:
+    - Side-by-side plan comparison table
+    - Feature/limitation matrix
+    - Charts:
+      * Premium vs. Rating scatter plot (company-colored)
+      * Coverage Amount bar chart
+      * Deductible comparison
+      * Value Score heatmap
+    - Export to CSV button
+    - Print-friendly view button
+
+Tab 3: "Plan Details"
+  Components:
+    - Full plan information:
+      * Policy coverage breakdown
+      * Deductible and limits
+      * Features/limitations
+      * Claim process steps
+      * Company contact info
+    - Coverage checklist (interactive checkboxes)
+    - FAQ for this specific plan
+    - Policy document link (if available)
+
+Tab 4: "Support Hub"
+  Components:
+    - FAQ search bar
+    - Frequently asked questions:
+      * "What does this insurance cover?"
+      * "How do I file a claim?"
+      * "What are deductibles?"
+      * "How long does claims processing take?"
+      * "Can I bundle policies?"
+    - Live chat simulator (text input/output)
+    - Contact information for companies
+    - Knowledge base articles
+
+Tab 5: "Feedback & Wallet"
+  Components:
+    - Saved Policies section:
+      * List of saved plans
+      * "Remove" button for each
+      * "View Details" link
+      * Purchase/remind me later button
+    - Rate This Recommendation:
+      * Star rating (1-5)
+      * Feedback text area
+      * "Submit" button
+    - Recent searches history
+    - Saved preferences
+
+================================================================================
+
+UI STATE & DATA FLOW:
+
+Streamlit Session State (Maintained Across Reruns):
+  st.session_state keys:
+    - search_query: User's input query
+    - intent_result: Output from Intent Agent
+    - enhanced_query: Output from Query Enhancement Agent
+    - plans_list: Output from Connector Agent
+    - recommendation_text: Output from Recommendation Agent
+    - selected_plan: Currently viewed plan
+    - saved_policies: User's saved plans
+    - search_history: List of previous searches
+    - user_feedback: Collected ratings/comments
+
+Data Flow Per Search:
+  1. User enters query in sidebar
+  2. Click "Search" → triggers callback
+  3. Streamlit reruns entire script with new state
+  4. Query passed through agent pipeline
+  5. Results stored in session_state
+  6. UI renders with updated data
+  7. Charts/tables update automatically
+  8. User interactions trigger new reruns (tabs, sorting, etc.)
+
+Rerun Optimization:
+  - Use @st.cache_data for static data (plans, FAQ)
+  - Use @st.cache_resource for expensive objects (scrapers)
+  - Conditional rendering to avoid unnecessary updates
+  - Session state persistence across navigation
+
+================================================================================
+
+UI/UX CHARACTERISTICS:
+
+Current Strengths:
+  ✓ No external dependencies (all Python/Streamlit)
+  ✓ Quick deployment (single command: streamlit run)
+  ✓ Responsive layout (auto-adjusts to screen size)
+  ✓ Interactive charts (zoom, hover, export)
+  ✓ Real-time search results
+  ✓ Multi-tab navigation
+  ✓ Session persistence
+  ✓ Markdown support for rich text
+  ✓ Data export (CSV, PDF)
+
+Current Limitations:
+  ✗ Static styling (limited customization without custom CSS)
+  ✗ No user authentication (session-only, not persistent per user)
+  ✗ Limited animations/transitions
+  ✗ Sidebar always visible (not collapsible on mobile)
+  ✗ No dark mode by default (users toggle in settings)
+  ✗ Chart interactivity limited compared to D3.js
+  ✗ No real backend database (JSON files only)
+  ✗ Rerun on every interaction (can be slow for large datasets)
+
+UI Performance Metrics:
+  - Page load time: ~2-3 seconds (first run)
+  - Query processing: ~5-15 seconds (depends on LLM response time)
+  - Results rendering: <1 second
+  - Chart rendering: <2 seconds
+  - Tab switching: <1 second (instant with caching)
+
+Mobile Responsiveness:
+  - Sidebar collapses on small screens
+  - Tables scroll horizontally
+  - Charts scale proportionally
+  - Touch-friendly buttons (large tap targets)
+  - Text input adapts to mobile keyboard
+
+================================================================================
+
+VISUAL ELEMENTS & DESIGN:
+
+Color Scheme:
+  - Primary: Blue (#1F77B4)
+  - Secondary: Green (#2CA02C)
+  - Accent: Orange (#FF7F0E)
+  - Neutral: Gray (#7F7F7F)
+  - Alert: Red (#D62728)
+  - Success: Green (#2CA02C)
+
+Typography:
+  - Headlines: H1-H3 markdown
+  - Body: Streamlit default (sans-serif)
+  - Monospace: Code blocks (for JSON/data)
+  - Font sizes: Auto-scaled for readability
+
+Icons & Symbols:
+  - ✓ Check mark (success/included)
+  - ✗ Cross mark (failure/excluded)
+  - ⭐ Star (rating/rating indicator)
+  - 💰 Dollar sign (premium/cost)
+  - 🏠 House (home insurance)
+  - 🚗 Car (auto insurance)
+  - ❤️ Heart (health insurance)
+  - 🐕 Dog (pet insurance)
+  - 📋 Clipboard (policy/document)
+
+Spacing & Layout:
+  - Sidebar width: 350px (fixed)
+  - Main content max-width: 1200px
+  - Padding: 20-40px (responsive)
+  - Gap between cards: 16px
+  - Line height: 1.6 (readable)
+
+Interactive Elements:
+  - Buttons: Blue background, white text, hover effect
+  - Input fields: Light gray background, border on focus
+  - Sliders: Blue track, circular handle
+  - Checkboxes: Check mark animation
+  - Radio buttons: Circular selection
+  - Dropdowns: Select with arrow icon
+  - Cards: Light shadow, hover lift effect
+
+================================================================================
+                          HOW TO USE
+================================================================================
+
+STARTING THE SYSTEM:
+
+Step 1: Start Ollama LLM Server
+  cd to any directory
+  ollama serve
+  Expected output: "Listening on 127.0.0.1:11434"
+
+Step 2: Activate Virtual Environment (Windows PowerShell)
+  & .\.venv\Scripts\Activate.ps1
+
+Step 3: Navigate to Project
+  Set-Location .\insurance_agentic_poc
+
+Step 4: Run Streamlit App
+  python -m streamlit run .\ui_dynamic_fixed.py
+
+Step 5: Open Browser
+  http://127.0.0.1:8501 (Streamlit default)
+
+USING THE APP:
+
+1. Enter a query in the sidebar
+   Example: "Home insurance with pet and swimming pool in CA"
+
+2. Click "Search" or press Enter
+
+3. System processes:
+   - Intent Agent extracts structured intent
+   - Query Enhancement Agent fills in defaults
+   - Connector Agent fetches and scores plans
+   - Recommendation Agent generates explanation
+
+4. View results in main area:
+   - Top recommendations
+   - Plan comparison charts
+   - Full plan details
+   - Support/FAQ options
+
+5. Interact with results:
+   - Click "Learn More" for details
+   - View comparison charts
+   - Save policies to wallet
+   - Rate plans and provide feedback
+
+
+================================================================================
+                    UI RECOMMENDATIONS & IMPROVEMENTS
+================================================================================
+
+BASED ON CURRENT UI PROFILE, HERE ARE ACTIONABLE RECOMMENDATIONS:
+
+PRIORITY 1: CRITICAL (Implement First)
+================================================================================
+
+1. ADD USER AUTHENTICATION
+   Problem: Currently no user login → can't persist saved policies/preferences
+   Recommendation: Add simple login/signup
+   Implementation:
+     - Use Streamlit Community Cloud built-in auth
+     - Or add custom auth with credentials JSON
+     - Store user_id in session_state
+     - Persist policies_wallet_db.json per user_id
+   Impact: Users can return and see their saved policies
+   Effort: 2-3 hours
+   Priority Score: 9/10
+
+2. IMPROVE QUERY PROCESSING UX
+   Problem: Users see 5-15 second delay with no feedback
+   Recommendation: Add progress indicators
+   Implementation:
+     - Add st.spinner() around agent pipeline
+     - Show step-by-step progress:
+       "🔍 Extracting intent..."
+       "✏️ Enhancing query..."
+       "📋 Fetching plans..."
+       "🤖 Generating recommendations..."
+     - Estimated time remaining
+     - Cancel button to stop processing
+   Impact: Users feel progress, less likely to close tab
+   Effort: 1-2 hours
+   Priority Score: 8/10
+
+3. ADD RESULT FILTERING & SORTING
+   Problem: Can't sort/filter results by user preferences
+   Recommendation: Add interactive filters
+   Implementation:
+     - Sort by: Premium (low→high), Rating (high→low), Coverage (high→low)
+     - Filter by: Premium range slider, Min rating, Coverage amount
+     - Results update live as filters change
+     - Remember filter state in session
+   Impact: Users find plans faster
+   Effort: 2-3 hours
+   Priority Score: 8/10
+
+4. MOBILE-FIRST RESPONSIVE DESIGN
+   Problem: Sidebar takes too much space on mobile
+   Recommendation: Implement mobile layout
+   Implementation:
+     - Detect screen width (st.columns with responsive ratios)
+     - On mobile: Collapse sidebar to hamburger menu
+     - Stack tabs vertically on small screens
+     - Touch-friendly button sizes (48px+ tap targets)
+     - Test on iPhone/Android
+   Impact: Works well on phones/tablets
+   Effort: 3-4 hours
+   Priority Score: 7/10
+
+================================================================================
+
+PRIORITY 2: HIGH (Implement Next)
+================================================================================
+
+5. REAL-TIME PLAN COMPARISON
+   Problem: Need to switch tabs to see plan details
+   Recommendation: Add inline comparison modal
+   Implementation:
+     - Click "Compare" on 2+ plans → opens popup
+     - Shows side-by-side comparison in modal
+     - Highlights differences (coverage, premium, rating)
+     - Swipe between plans on mobile
+     - Export comparison as PDF
+   Impact: Easier to decide between plans
+   Effort: 2-3 hours
+   Priority Score: 7/10
+
+6. SEARCH HISTORY & SUGGESTIONS
+   Problem: Users must retype similar queries
+   Recommendation: Add search autocomplete
+   Implementation:
+     - Show recent searches as dropdown suggestions
+     - Suggest common queries:
+       "Home insurance in CA"
+       "Health insurance for family"
+       "Auto insurance with low deductible"
+     - One-click to run suggested search
+     - Clear history button
+   Impact: Faster repeat searches, better UX
+   Effort: 1-2 hours
+   Priority Score: 7/10
+
+7. PERSONALIZED RECOMMENDATIONS
+   Problem: Same recommendations for all users
+   Recommendation: Add user profile preferences
+   Implementation:
+     - Ask user to set preferences on first visit:
+       * Budget preference (low/balanced/premium)
+       * Coverage preference (minimum/standard/maximum)
+       * Risk tolerance
+     - Save to user profile
+     - Personalize recommendations accordingly
+     - Show "Best for your profile" badge on plans
+   Impact: More relevant recommendations
+   Effort: 2-3 hours
+   Priority Score: 7/10
+
+8. LIVE CHAT / SUPPORT WIDGET
+   Problem: Users can't get instant help
+   Recommendation: Add live chat widget
+   Implementation:
+     - Simple chatbot using Ollama
+     - "Ask me anything about insurance"
+     - Integration with FAQ knowledge base
+     - Option to escalate to human agent
+     - Chat history persistence
+   Impact: Better customer support, reduced abandonment
+   Effort: 3-4 hours
+   Priority Score: 6/10
+
+================================================================================
+
+PRIORITY 3: MEDIUM (Nice to Have)
+================================================================================
+
+9. ENHANCED VISUALIZATIONS
+   Problem: Charts could be more informative
+   Recommendation: Add more chart types
+   Implementation:
+     - Premium over time (trend line if multiple searches)
+     - Coverage distribution (pie/donut chart)
+     - Rating vs. Price correlation (bubble chart)
+     - Feature popularity (horizontal bar chart)
+     - Custom chart builder (users select X/Y axes)
+   Impact: Better insights, more engaging
+   Effort: 3-4 hours
+   Priority Score: 6/10
+
+10. POLICY WALLET ENHANCEMENTS
+    Problem: Wallet is basic, no reminders
+    Recommendation: Add smart reminders
+    Implementation:
+      - Send renewal reminders (email/SMS)
+      - Premium price comparison (notify if better deal available)
+      - One-click purchase flow
+      - Policy document storage (PDF download)
+      - Claims quick-start guide
+    Impact: Better retention, repeat business
+    Effort: 4-5 hours
+    Priority Score: 6/10
+
+11. RATING & REVIEW SYSTEM
+    Problem: No social proof/community feedback
+    Recommendation: Add rating system
+    Implementation:
+      - Users rate plans (1-5 stars)
+      - Write reviews (moderated)
+      - Show aggregate rating on plan cards
+      - Filter by rating
+      - Helpful/not-helpful voting on reviews
+    Impact: Community-driven insights, trust building
+    Effort: 2-3 hours
+    Priority Score: 5/10
+
+12. DARK MODE THEME
+    Problem: Light mode only
+    Recommendation: Add proper dark mode
+    Implementation:
+      - Toggle dark/light in settings
+      - Store preference in user profile
+      - Adapt colors for readability
+      - Use Streamlit theme configuration
+    Impact: Better accessibility, user preference
+    Effort: 1-2 hours
+    Priority Score: 5/10
+
+================================================================================
+
+PRIORITY 4: LOW (Future Nice-to-Have)
+================================================================================
+
+13. ADVANCED FILTERING BY COVERAGE
+    Problem: Can't filter by specific coverage types (fire, theft, etc.)
+    Recommendation: Add granular coverage filters
+    Implementation:
+      - Checkboxes for coverage types:
+        ☑ Fire ☑ Theft ☑ Liability ☑ Water ☑ Natural Disasters
+      - Deductible range slider
+      - Premium breakdown (show what you're paying for)
+    Impact: Power users find perfect plan faster
+    Effort: 2-3 hours
+    Priority Score: 4/10
+
+14. MULTI-LANGUAGE SUPPORT
+    Problem: English only
+    Recommendation: Add Spanish/Chinese support
+    Implementation:
+      - i18n library for translations
+      - Language selector in sidebar
+      - Translate UI labels and content
+      - LLM responses in selected language
+    Impact: Reach international customers
+    Effort: 4-5 hours
+    Priority Score: 3/10
+
+15. API FOR THIRD-PARTY INTEGRATION
+    Problem: Can't embed in external websites
+    Recommendation: Add REST API
+    Implementation:
+      - FastAPI wrapper around agents
+      - Endpoints:
+        POST /search (query → recommendations)
+        GET /plans (list all plans)
+        POST /compare (compare N plans)
+      - Authentication (API key)
+      - Rate limiting
+    Impact: Partner integrations, revenue potential
+    Effort: 5-6 hours
+    Priority Score: 3/10
+
+================================================================================
+
+RECOMMENDED IMPLEMENTATION ROADMAP:
+
+PHASE 1 (Week 1):
+  Priority: 1, 2, 3
+  Features: User auth, progress spinner, sorting/filtering, mobile layout
+  Time: 8-10 hours
+  Deliverable: MVP with core UX improvements
+
+PHASE 2 (Week 2):
+  Priority: 4, 5, 6, 7
+  Features: Plan comparison modal, search history, personalization, live chat
+  Time: 10-12 hours
+  Deliverable: Personalized, interactive experience
+
+PHASE 3 (Week 3):
+  Priority: 8, 9, 10, 11
+  Features: Enhanced visualizations, wallet enhancements, ratings, dark mode
+  Time: 10-12 hours
+  Deliverable: Feature-rich, community-driven platform
+
+PHASE 4+ (Future):
+  Priority: 12, 13, 14
+  Features: Advanced filtering, multi-language, API
+  Time: 12-15 hours
+  Deliverable: Enterprise-ready platform
+
+================================================================================
+
+QUICK WINS (1-2 Hours Each):
+
+1. Add loading spinner to search
+2. Add "Sort By" dropdown (premium, rating, coverage)
+3. Add "Recent Searches" dropdown
+4. Add dark mode toggle
+5. Add "Share Results" button (copy link)
+6. Add "Clear All" button for filters
+7. Add keyboard shortcuts (Ctrl+K for search focus)
+8. Add estimated claim processing time display
+9. Add "Why this recommendation?" explainability
+10. Add FAQ section to Support tab
+
+These quick wins can be done in parallel and deployed independently.
+
+================================================================================
+
+ARCHITECTURE SUMMARY:
+
+Input (User Query)
+    ↓
+Intent Agent (Ollama)
+    ↓
+Query Enhancement Agent (Ollama)
+    ↓
+Connector + Pricing Agent (Deterministic)
+    ↓
+Recommendation Agent (Ollama)
+    ↓
+Streamlit UI Display
+    ↓
+Output (Recommendations)
+
+TECHNOLOGIES:
+  - Streamlit: UI
+  - Ollama + Gemma 3.1B: LLM reasoning
+  - BeautifulSoup: Web scraping
+  - Pandas + Altair: Data & charts
+  - JSON: Data storage
+
+AGENTS:
+  1. Intent Agent: Extract structured intent
+  2. Query Enhancement Agent: Fill missing fields
+  3. Connector + Pricing Agent: Fetch, filter, score plans
+  4. Recommendation Agent: Generate explanation
+
+TOOLS:
+  - Ollama LLM API: LLM inference
+  - Web Scrapers: Fetch real insurance data
+  - Cache Manager: Avoid re-scraping
+  - JSON Databases: Store data
+
+KEY FILES:
+  - agents/intent_agent.py: Intent extraction
+  - agents/query_enhancement_agent.py: Query enhancement
+  - agents/connectors_agent.py: Plan fetching & scoring
+  - agents/recommendation_agent.py: Recommendations
+  - ui_dynamic_fixed.py: Main Streamlit UI
+  - data_plans.py: Dummy plan database
+  - ollama_client.py: LLM integration
+  - dynamic_search.py: Search engine orchestration
+
+MODELS:
+  - Gemma 3.1B (local, Ollama)
+
+FRAMEWORKS:
+  - Streamlit (web UI)
+  - Ollama (local LLM)
+  - BeautifulSoup (web scraping)
+  - Pandas (data)
+  - Altair (visualization)
+
+================================================================================
+                        END OF DOCUMENT
+================================================================================

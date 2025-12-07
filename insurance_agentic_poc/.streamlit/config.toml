@@ -9,7 +9,7 @@ level = "error"
 headless = true
 port = 8501
 runOnSave = false
-address = "0.0.0.0"
+address = "127.0.0.1"
 enableCORS = false
 enableXsrfProtection = false
 
